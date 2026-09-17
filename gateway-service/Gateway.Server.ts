@@ -24,6 +24,20 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
+// A short/guessable secret here is a full auth bypass (JWT_SECRET) or
+// lets anyone skip the gateway entirely (INTERNAL_SERVICE_SECRET) — fail
+// at boot, not silently accept whatever's in the env.
+const MIN_SECRET_LENGTH = 32;
+const weakSecrets = ["JWT_SECRET", "INTERNAL_SERVICE_SECRET"].filter(
+  (key) => (process.env[key] as string).length < MIN_SECRET_LENGTH
+);
+if (weakSecrets.length > 0) {
+  console.error(
+    `${weakSecrets.join(", ")} must be at least ${MIN_SECRET_LENGTH} random characters.`
+  );
+  process.exit(1);
+}
+
 const app = express();
 
 // Only set when actually behind a real reverse proxy/load balancer in

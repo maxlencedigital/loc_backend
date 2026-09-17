@@ -8,7 +8,16 @@ import { UserRole } from "../Models/User/User.Interface.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
-const SALT_ROUNDS = 10;
+// OWASP's current bcrypt guidance (2023+) is a work factor of 10-12;
+// 12 is the safer default for a new project and still well within
+// acceptable per-login latency.
+const SALT_ROUNDS = 12;
+
+// Pinned explicitly on both sign and verify — never left to the
+// library's default inference — so a future dependency change can't
+// silently widen what's accepted (the classic JWT "alg confusion"
+// class of bug starts with an unconstrained verify).
+const JWT_ALGORITHM = "HS256";
 
 /**
  * No hardcoded fallback secret — a service without JWT_SECRET
@@ -135,6 +144,7 @@ const login = async (email: string, password: string) => {
     throw new CustomException("Invalid email or password.", unauthorized);
   }
   const token = jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), {
+    algorithm: JWT_ALGORITHM,
     expiresIn: "12h",
   });
   return {
@@ -145,7 +155,10 @@ const login = async (email: string, password: string) => {
 
 const verifyToken = (token: string): { userId: string; role: UserRole } => {
   try {
-    return jwt.verify(token, getJwtSecret()) as { userId: string; role: UserRole };
+    return jwt.verify(token, getJwtSecret(), { algorithms: [JWT_ALGORITHM] }) as {
+      userId: string;
+      role: UserRole;
+    };
   } catch {
     throw new CustomException("Invalid or expired token.", unauthorized);
   }

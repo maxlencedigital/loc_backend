@@ -22,6 +22,15 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
+// A short/guessable INTERNAL_SERVICE_SECRET lets anyone skip the gateway
+// entirely and forge x-user-id/x-user-role directly — fail at boot, not
+// silently accept whatever's in the env.
+const MIN_SECRET_LENGTH = 32;
+if ((process.env.INTERNAL_SERVICE_SECRET as string).length < MIN_SECRET_LENGTH) {
+  console.error(`INTERNAL_SERVICE_SECRET must be at least ${MIN_SECRET_LENGTH} random characters.`);
+  process.exit(1);
+}
+
 const app = express();
 
 // Only set when actually behind a real reverse proxy/load balancer.

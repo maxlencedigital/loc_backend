@@ -6,6 +6,12 @@ if (missing.length > 0) {
   throw new Error(`Missing required database environment variables: ${missing.join(", ")}`);
 }
 
+// Off by default because local/dev MySQL (this repo's docker-compose.yml)
+// has no TLS cert configured — turn this on with DB_SSL=true against any
+// DB that does (every managed cloud MySQL does), so credentials and query
+// data aren't sent in plaintext over the network in production.
+const useDbSsl = process.env.DB_SSL === "true";
+
 export const sequelize = new Sequelize(
   process.env.DB_NAME as string,
   process.env.DB_USER as string,
@@ -19,6 +25,7 @@ export const sequelize = new Sequelize(
       timestamps: true,
     },
     timezone: "+00:00",
+    dialectOptions: useDbSsl ? { ssl: { rejectUnauthorized: true } } : {},
   }
 );
 
