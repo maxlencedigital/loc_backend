@@ -25,7 +25,68 @@ describe("AuthService.register", () => {
   it("rejects a duplicate email", async () => {
     mockedUserQuery.findByEmail.mockResolvedValue({ id: "1" } as any);
     await expect(
-      AuthService.register({ name: "A", email: "a@x.com", phoneNumber: "1", password: "pw" })
+      AuthService.register({
+        name: "A",
+        email: "a@x.com",
+        phoneNumber: "1",
+        password: "plaintext-pw",
+      })
+    ).rejects.toThrow(CustomException);
+  });
+
+  it("ignores any client-supplied role and always registers as customer", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    mockedUserQuery.create.mockResolvedValue({
+      id: "new-id",
+      email: "a@x.com",
+      role: "customer",
+    } as any);
+
+    await AuthService.register({
+      name: "A",
+      email: "a@x.com",
+      phoneNumber: "1",
+      password: "plaintext-pw",
+      // @ts-expect-error role is intentionally not part of the public input type
+      role: "admin",
+    });
+
+    const createArg = mockedUserQuery.create.mock.calls[0][0];
+    expect(createArg.role).toBe("customer");
+  });
+
+  it("rejects a password shorter than the minimum length", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    await expect(
+      AuthService.register({ name: "A", email: "a@x.com", phoneNumber: "1", password: "short" })
+    ).rejects.toThrow(CustomException);
+    expect(mockedUserQuery.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed email", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    await expect(
+      AuthService.register({
+        name: "A",
+        email: "not-an-email",
+        phoneNumber: "1",
+        password: "plaintext-pw",
+      })
+    ).rejects.toThrow(CustomException);
+    expect(mockedUserQuery.create).not.toHaveBeenCalled();
+  });
+
+  it("maps a concurrent duplicate-email race (DB unique constraint) to a CustomException", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    mockedUserQuery.create.mockRejectedValue({ name: "SequelizeUniqueConstraintError" });
+
+    await expect(
+      AuthService.register({
+        name: "A",
+        email: "a@x.com",
+        phoneNumber: "1",
+        password: "plaintext-pw",
+      })
     ).rejects.toThrow(CustomException);
   });
 
@@ -52,6 +113,11 @@ describe("AuthService.register", () => {
 });
 
 describe("AuthService.login", () => {
+  it("rejects a missing password without hitting the database", async () => {
+    await expect(AuthService.login("a@x.com", "")).rejects.toThrow(CustomException);
+    expect(mockedUserQuery.findByEmail).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown email", async () => {
     mockedUserQuery.findByEmail.mockResolvedValue(null);
     await expect(AuthService.login("nobody@x.com", "pw")).rejects.toThrow(CustomException);

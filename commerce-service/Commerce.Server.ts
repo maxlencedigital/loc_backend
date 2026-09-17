@@ -8,7 +8,14 @@ import router from "./src/Routes/Commerce.Routes.js";
 import { requireInternalSecret } from "./src/Middleware/Identity.js";
 import { apiLimiter } from "./src/Middleware/RateLimiter.js";
 
-const requiredEnvVars = ["DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "INTERNAL_SERVICE_SECRET"];
+const requiredEnvVars = [
+  "DB_NAME",
+  "DB_USER",
+  "DB_PASSWORD",
+  "DB_HOST",
+  "INTERNAL_SERVICE_SECRET",
+  "CORS_ORIGIN",
+];
 const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
 if (missingEnvVars.length > 0) {
   console.error(`Missing required environment variables: ${missingEnvVars.join(", ")}`);
@@ -22,7 +29,7 @@ if (process.env.TRUST_PROXY) {
   app.set("trust proxy", process.env.TRUST_PROXY === "true" ? true : Number(process.env.TRUST_PROXY));
 }
 
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || "*" }));
+app.use(cors({ origin: process.env.CORS_ORIGIN!.split(",") }));
 app.use(helmet());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

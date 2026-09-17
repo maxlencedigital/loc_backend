@@ -20,11 +20,12 @@ import { created, successCode } from "../../commons/Utils/StatusCode.js";
  *               name: { type: string }
  *               email: { type: string }
  *               phoneNumber: { type: string }
- *               password: { type: string }
- *               role: { type: string, enum: [admin, staff, driver, customer] }
+ *               password: { type: string, minLength: 8 }
  *     responses:
  *       201:
- *         description: Account created.
+ *         description: Account created. Always registers as role "customer" — elevated roles are granted separately, never accepted from this request.
+ *       400:
+ *         description: Missing or invalid fields.
  *       409:
  *         description: An account with this email already exists.
  */

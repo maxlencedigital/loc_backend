@@ -22,10 +22,34 @@ export const sequelize = new Sequelize(
   }
 );
 
+const MAX_CONNECT_ATTEMPTS = 5;
+const RETRY_BASE_DELAY_MS = 1000;
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Retries with backoff instead of failing on the first attempt — under an
+ * orchestrator, this service and its DB container can cold-start together,
+ * and a single-shot connect would crash-loop until the DB happens to win
+ * the race.
+ */
 export const connectDB = async (): Promise<void> => {
-  await sequelize.authenticate();
-  console.log("Connected to MySQL.");
-  // Fine while this service has no entities yet. Once real tables
-  // exist with data, replace this with real migrations instead of auto-sync.
-  await sequelize.sync({ alter: false });
+  for (let attempt = 1; attempt <= MAX_CONNECT_ATTEMPTS; attempt++) {
+    try {
+      await sequelize.authenticate();
+      console.log("Connected to MySQL.");
+      // Fine while this service has no entities yet. Once real tables
+      // exist with data, replace this with real migrations instead of auto-sync.
+      await sequelize.sync({ alter: false });
+      return;
+    } catch (error) {
+      if (attempt === MAX_CONNECT_ATTEMPTS) {
+        throw error;
+      }
+      const backoffMs = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+      console.error(
+        `DB connection attempt ${attempt}/${MAX_CONNECT_ATTEMPTS} failed, retrying in ${backoffMs}ms...`
+      );
+      await delay(backoffMs);
+    }
+  }
 };

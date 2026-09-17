@@ -56,5 +56,89 @@ services:
     networks:
       - laundry_network_development
 
+  gateway-service:
+    container_name: laundry-gateway-service
+    build: ./gateway-service
+    env_file: ./gateway-service/.env
+    environment:
+      DB_HOST: mysql-development
+      DB_PORT: '3306'
+      COMMERCE_SERVICE_URL: http://commerce-service:5001
+      LOGISTICS_SERVICE_URL: http://logistics-service:5002
+      FINANCE_SERVICE_URL: http://finance-service:5003
+      GROWTH_SERVICE_URL: http://growth-service:5004
+    ports:
+      - '5000:5000'
+    depends_on:
+      mysql-development:
+        condition: service_healthy
+    restart: always
+    networks:
+      - laundry_network_development
+
+  commerce-service:
+    container_name: laundry-commerce-service
+    build: ./commerce-service
+    env_file: ./commerce-service/.env
+    environment:
+      DB_HOST: mysql-development
+      DB_PORT: '3306'
+    ports:
+      - '5001:5001'
+    depends_on:
+      mysql-development:
+        condition: service_healthy
+    restart: always
+    networks:
+      - laundry_network_development
+
+  logistics-service:
+    container_name: laundry-logistics-service
+    build: ./logistics-service
+    env_file: ./logistics-service/.env
+    environment:
+      DB_HOST: mysql-development
+      DB_PORT: '3306'
+    ports:
+      - '5002:5002'
+    depends_on:
+      mysql-development:
+        condition: service_healthy
+    restart: always
+    networks:
+      - laundry_network_development
+
+  finance-service:
+    container_name: laundry-finance-service
+    build: ./finance-service
+    env_file: ./finance-service/.env
+    environment:
+      DB_HOST: mysql-development
+      DB_PORT: '3306'
+    ports:
+      - '5003:5003'
+    depends_on:
+      mysql-development:
+        condition: service_healthy
+    restart: always
+    networks:
+      - laundry_network_development
+
+  growth-service:
+    container_name: laundry-growth-service
+    build: ./growth-service
+    env_file: ./growth-service/.env
+    environment:
+      DB_HOST: mysql-development
+      DB_PORT: '3306'
+    ports:
+      - '5004:5004'
+    depends_on:
+      mysql-development:
+        condition: service_healthy
+    restart: always
+    networks:
+      - laundry_network_development
+
 volumes:
   mysql-data-development:

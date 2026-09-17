@@ -16,6 +16,7 @@ const requiredEnvVars = [
   "DB_PASSWORD",
   "DB_HOST",
   "INTERNAL_SERVICE_SECRET",
+  "CORS_ORIGIN",
 ];
 const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
 if (missingEnvVars.length > 0) {
@@ -33,7 +34,7 @@ if (process.env.TRUST_PROXY) {
   app.set("trust proxy", process.env.TRUST_PROXY === "true" ? true : Number(process.env.TRUST_PROXY));
 }
 
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || "*" }));
+app.use(cors({ origin: process.env.CORS_ORIGIN!.split(",") }));
 app.use(helmet());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -41,7 +42,10 @@ app.use(morgan("dev"));
 app.use(apiLimiter);
 app.use(activityLogger("gateway-service"));
 
-setupSwagger(app);
+// Full aggregated 5-service API surface — dev/staging only, never in production.
+if (process.env.NODE_ENV !== "production") {
+  setupSwagger(app);
+}
 
 app.get("/", (_req, res) => {
   res.send("Gateway service is running.");
