@@ -1,7 +1,12 @@
 import { Request, Response } from "express";
 import { AuthService } from "../Services/Auth.Service.js";
-import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
-import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import {
+  handleErrorResponse,
+  handleSuccessResponse,
+  handleNotImplementedResponse,
+} from "../../commons/Response/Response.js";
+import { created, successCode, badRequest } from "../../commons/Utils/StatusCode.js";
+import { CustomException } from "../../commons/Exception/CustomException.js";
 
 /**
  * @openapi
@@ -78,4 +83,39 @@ const login = async (req: Request, res: Response) => {
   }
 };
 
-export const AuthController = { register, login };
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     summary: Exchange a refresh token for a new access token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken: { type: string }
+ *     responses:
+ *       200:
+ *         description: "Scaffolded per API contract — not yet implemented. Once wired up, returns: { token: string }."
+ *       400:
+ *         description: Missing refreshToken.
+ *       501:
+ *         description: Endpoint scaffolded per API contract — implementation pending.
+ */
+const refresh = async (req: Request, res: Response) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      throw new CustomException("refreshToken is required.", badRequest);
+    }
+    return handleNotImplementedResponse(res);
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
+};
+
+export const AuthController = { register, login, refresh };

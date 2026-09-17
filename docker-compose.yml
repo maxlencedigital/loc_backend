@@ -58,9 +58,15 @@ services:
 
   gateway-service:
     container_name: laundry-gateway-service
-    build: ./gateway-service
+    # Root build context (not ./gateway-service like the other 4 services)
+    # — needed so the image can generate its aggregated OpenAPI snapshot
+    # from every sibling service's source. See gateway-service/Dockerfile.
+    build:
+      context: .
+      dockerfile: gateway-service/Dockerfile
     env_file: ./gateway-service/.env
     environment:
+      NODE_ENV: development
       DB_HOST: mysql-development
       DB_PORT: '3306'
       COMMERCE_SERVICE_URL: http://commerce-service:5001

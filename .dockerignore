@@ -1,0 +1,12 @@
+# Only gateway-service's build uses the repo root as its build context
+# (needed to generate the aggregated OpenAPI snapshot from sibling
+# services' source — see gateway-service/Dockerfile). The other 4
+# services each build from their own directory and never see this file.
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+.git
+*.md

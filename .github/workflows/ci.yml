@@ -113,14 +113,32 @@ jobs:
         include:
           - service: commerce-service
             changed: ${{ needs.changes.outputs.commerce }}
+            context: ./commerce-service
+            dockerfile: ./commerce-service/Dockerfile
           - service: finance-service
             changed: ${{ needs.changes.outputs.finance }}
+            context: ./finance-service
+            dockerfile: ./finance-service/Dockerfile
           - service: gateway-service
-            changed: ${{ needs.changes.outputs.gateway }}
+            # Gateway's image embeds a static snapshot of every service's
+            # API surface (see gateway-service/Dockerfile) — it must be
+            # rebuilt whenever ANY service changes, not just its own.
+            changed: >-
+              ${{ needs.changes.outputs.gateway == 'true'
+                || needs.changes.outputs.commerce == 'true'
+                || needs.changes.outputs.finance == 'true'
+                || needs.changes.outputs.growth == 'true'
+                || needs.changes.outputs.logistics == 'true' }}
+            context: .
+            dockerfile: ./gateway-service/Dockerfile
           - service: growth-service
             changed: ${{ needs.changes.outputs.growth }}
+            context: ./growth-service
+            dockerfile: ./growth-service/Dockerfile
           - service: logistics-service
             changed: ${{ needs.changes.outputs.logistics }}
+            context: ./logistics-service
+            dockerfile: ./logistics-service/Dockerfile
     steps:
       - name: Checkout
         if: matrix.changed == 'true'
@@ -148,7 +166,8 @@ jobs:
         if: matrix.changed == 'true'
         uses: docker/build-push-action@v6
         with:
-          context: ./${{ matrix.service }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
             ${{ steps.image.outputs.name }}:latest

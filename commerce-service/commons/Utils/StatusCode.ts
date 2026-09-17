@@ -10,6 +10,7 @@ const methodNotAllowed = 405;
 const conflict = 409;
 const tooManyRequests = 429;
 const serverError = 500;
+const notImplemented = 501;
 const serviceUnavailable = 503;
 
 export {
@@ -25,5 +26,6 @@ export {
   conflict,
   tooManyRequests,
   serverError,
+  notImplemented,
   serviceUnavailable,
 };

@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { serverError } from "../Utils/StatusCode.js";
+import { serverError, notImplemented } from "../Utils/StatusCode.js";
 import { unknownErrorMessage, successMessage } from "../Constant/Constants.js";
 import { CustomException } from "../Exception/CustomException.js";
 
@@ -49,4 +49,23 @@ const handleErrorResponse = (error: unknown, res: Response) => {
   });
 };
 
-export { handleSuccessResponse, handleErrorResponse };
+/**
+ * For routes that are scaffolded per the API contract but not yet
+ * wired to real logic — the route, request/response shape, and Swagger
+ * doc are final; only the implementation is pending. Kept distinct from
+ * handleErrorResponse so a contract stub is never confused with an
+ * actual runtime failure.
+ */
+const handleNotImplementedResponse = (
+  res: Response,
+  displayMessage: string = "Endpoint scaffolded per API contract — implementation pending."
+) => {
+  return res.status(notImplemented).json({
+    statusCode: notImplemented,
+    result: null,
+    displayMessage,
+    status: false,
+  });
+};
+
+export { handleSuccessResponse, handleErrorResponse, handleNotImplementedResponse };
