@@ -3,7 +3,7 @@ import { handleErrorResponse } from "../../commons/Response/Response.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { unauthorized, forbidden } from "../../commons/Utils/StatusCode.js";
 
-export type UserRole = "admin" | "staff" | "driver" | "customer";
+export type UserRole = "super_admin" | "admin" | "staff" | "driver" | "customer";
 
 export interface IdentifiedRequest extends Request {
   user?: { id: string; role: UserRole };
@@ -46,12 +46,18 @@ const requireIdentity = (req: IdentifiedRequest, res: Response, next: NextFuncti
   next();
 };
 
+/**
+ * `super_admin` always passes, regardless of which roles are listed —
+ * it sits above the rest of the hierarchy (currently just admin, with
+ * staff/driver/customer below that; more tiers can slot in between
+ * later without touching every requireRole(...) call site).
+ */
 const requireRole = (...roles: UserRole[]) => {
   return (req: IdentifiedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return handleErrorResponse(new CustomException("Authentication required.", unauthorized), res);
     }
-    if (!roles.includes(req.user.role)) {
+    if (req.user.role !== "super_admin" && !roles.includes(req.user.role)) {
       return handleErrorResponse(
         new CustomException("You do not have permission to perform this action.", forbidden),
         res

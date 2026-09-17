@@ -8,6 +8,7 @@
     "start": "node dist/Gateway.Server.js",
     "dev": "tsx watch Gateway.Server.ts",
     "generate:openapi": "node scripts/generate-openapi.mjs",
+    "seed:super-admin": "tsc && node scripts/seed-super-admin.mjs",
     "test": "jest",
     "test:watch": "jest --watch"
   },

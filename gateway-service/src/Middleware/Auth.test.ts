@@ -82,4 +82,12 @@ describe("requireRole", () => {
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
   });
+
+  it("lets a super_admin through even when super_admin isn't in the allowed list", () => {
+    const { req, res, next } = mockReqRes();
+    req.user = { id: "u1", role: "super_admin" };
+    requireRole("driver")(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
 });

@@ -112,6 +112,69 @@ describe("AuthService.register", () => {
   });
 });
 
+describe("AuthService.createPrivilegedUser", () => {
+  it("rejects role: super_admin — only the seed script can create one", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    await expect(
+      AuthService.createPrivilegedUser({
+        name: "A",
+        email: "a@x.com",
+        phoneNumber: "1",
+        password: "plaintext-pw",
+        role: "super_admin",
+      })
+    ).rejects.toThrow(CustomException);
+    expect(mockedUserQuery.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects role: customer — that's what public /auth/register is for", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    await expect(
+      AuthService.createPrivilegedUser({
+        name: "A",
+        email: "a@x.com",
+        phoneNumber: "1",
+        password: "plaintext-pw",
+        role: "customer",
+      })
+    ).rejects.toThrow(CustomException);
+    expect(mockedUserQuery.create).not.toHaveBeenCalled();
+  });
+
+  it("creates an admin account with the requested role", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    mockedUserQuery.create.mockResolvedValue({
+      id: "new-id",
+      email: "admin@x.com",
+      role: "admin",
+    } as any);
+
+    const result = await AuthService.createPrivilegedUser({
+      name: "Admin",
+      email: "admin@x.com",
+      phoneNumber: "1",
+      password: "plaintext-pw",
+      role: "admin",
+    });
+
+    expect(result).toEqual({ id: "new-id", email: "admin@x.com", role: "admin" });
+    expect(mockedUserQuery.create.mock.calls[0][0].role).toBe("admin");
+  });
+
+  it("still enforces the same input validation as register", async () => {
+    await expect(
+      AuthService.createPrivilegedUser({
+        name: "A",
+        email: "a@x.com",
+        phoneNumber: "1",
+        password: "short",
+        role: "staff",
+      })
+    ).rejects.toThrow(CustomException);
+    expect(mockedUserQuery.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("AuthService.login", () => {
   it("rejects a missing password without hitting the database", async () => {
     await expect(AuthService.login("a@x.com", "")).rejects.toThrow(CustomException);

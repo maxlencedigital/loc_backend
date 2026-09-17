@@ -27,7 +27,7 @@ UserModel.init(
     phoneNumber: { type: DataTypes.STRING(20), allowNull: false, unique: true },
     passwordHash: { type: DataTypes.STRING, allowNull: false },
     role: {
-      type: DataTypes.ENUM("admin", "staff", "driver", "customer"),
+      type: DataTypes.ENUM("super_admin", "admin", "staff", "driver", "customer"),
       allowNull: false,
       defaultValue: "customer",
     },

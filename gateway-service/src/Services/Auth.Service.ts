@@ -23,15 +23,7 @@ const getJwtSecret = (): string => {
   return secret;
 };
 
-/**
- * Public self-registration input. There is deliberately no `role` field:
- * every self-registered account is a "customer". Elevated roles
- * (admin/staff/driver) must be granted separately by an already-authenticated
- * admin — never accepted from an anonymous request body, or any caller could
- * register as `role: "admin"` and inherit full access system-wide (every
- * downstream service trusts the gateway-issued x-user-role header as-is).
- */
-const register = async (input: {
+const validateNewUserInput = (input: {
   name: string;
   email: string;
   phoneNumber: string;
@@ -49,7 +41,15 @@ const register = async (input: {
       badRequest
     );
   }
+};
 
+const createUserRecord = async (input: {
+  name: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+  role: UserRole;
+}) => {
   const existing = await UserQuery.findByEmail(input.email);
   if (existing) {
     throw new CustomException("An account with this email already exists.", conflict);
@@ -61,7 +61,7 @@ const register = async (input: {
       email: input.email.trim(),
       phoneNumber: input.phoneNumber.trim(),
       passwordHash,
-      role: "customer",
+      role: input.role,
       isActive: true,
     });
     return { id: user.id, email: user.email, role: user.role };
@@ -75,6 +75,51 @@ const register = async (input: {
     }
     throw error;
   }
+};
+
+/**
+ * Public self-registration input. There is deliberately no `role` field:
+ * every self-registered account is a "customer". Elevated roles
+ * (admin/staff/driver) must be granted separately by an already-authenticated
+ * super_admin — never accepted from an anonymous request body, or any caller
+ * could register as `role: "admin"` and inherit full access system-wide
+ * (every downstream service trusts the gateway-issued x-user-role header
+ * as-is).
+ */
+const register = async (input: {
+  name: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+}) => {
+  validateNewUserInput(input);
+  return createUserRecord({ ...input, role: "customer" });
+};
+
+const PRIVILEGED_ROLES_CREATABLE_VIA_API: UserRole[] = ["admin", "staff", "driver"];
+
+/**
+ * super_admin-only: create an admin/staff/driver account. Deliberately
+ * cannot create another super_admin — that tier is seeded only via
+ * scripts/seed-super-admin.mjs, which requires direct DB/deploy access,
+ * not just an API token. Keeps "who can mint the top of the hierarchy"
+ * a strictly higher bar than "who can call an authenticated endpoint".
+ */
+const createPrivilegedUser = async (input: {
+  name: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+  role: UserRole;
+}) => {
+  if (!PRIVILEGED_ROLES_CREATABLE_VIA_API.includes(input.role)) {
+    throw new CustomException(
+      `role must be one of: ${PRIVILEGED_ROLES_CREATABLE_VIA_API.join(", ")}.`,
+      badRequest
+    );
+  }
+  validateNewUserInput(input);
+  return createUserRecord(input);
 };
 
 const login = async (email: string, password: string) => {
@@ -106,4 +151,4 @@ const verifyToken = (token: string): { userId: string; role: UserRole } => {
   }
 };
 
-export const AuthService = { register, login, verifyToken };
+export const AuthService = { register, login, verifyToken, createPrivilegedUser };

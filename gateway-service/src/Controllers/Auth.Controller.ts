@@ -118,4 +118,48 @@ const refresh = async (req: Request, res: Response) => {
   }
 };
 
-export const AuthController = { register, login, refresh };
+/**
+ * @openapi
+ * /auth/admin-users:
+ *   post:
+ *     summary: Create an admin, staff, or driver account (super_admin only)
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, email, phoneNumber, password, role]
+ *             properties:
+ *               name: { type: string }
+ *               email: { type: string }
+ *               phoneNumber: { type: string }
+ *               password: { type: string, minLength: 8 }
+ *               role: { type: string, enum: [admin, staff, driver] }
+ *     responses:
+ *       201:
+ *         description: Account created.
+ *       400:
+ *         description: Missing/invalid fields, or role is not one of admin/staff/driver.
+ *       403:
+ *         description: Caller is not a super_admin.
+ *       409:
+ *         description: An account with this email already exists.
+ */
+const createPrivilegedUser = async (req: Request, res: Response) => {
+  try {
+    const result = await AuthService.createPrivilegedUser(req.body);
+    return handleSuccessResponse(
+      { statusCode: created, result },
+      res,
+      "Account created successfully."
+    );
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
+};
+
+export const AuthController = { register, login, refresh, createPrivilegedUser };

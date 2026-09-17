@@ -20,6 +20,12 @@ router.get("/health", HealthController.check);
 router.post("/auth/register", authLimiter, AuthController.register);
 router.post("/auth/login", authLimiter, AuthController.login);
 router.post("/auth/refresh", authLimiter, AuthController.refresh);
+router.post(
+  "/auth/admin-users",
+  verifyToken,
+  requireRole("super_admin"),
+  AuthController.createPrivilegedUser
+);
 
 // -------------------------- Security --------------------------
 router.get("/audit/logs", verifyToken, requireRole("admin"), AuditController.getLogs);
