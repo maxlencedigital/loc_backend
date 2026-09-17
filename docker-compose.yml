@@ -1,0 +1,60 @@
+# Local dev environment shared by all 5 services — one MySQL server,
+# one database per service (see mysql-init/001-create-databases.sql),
+# plus phpMyAdmin/Adminer for browsing it. Mirrors the tecnogex_new_backend
+# dev compose pattern. Ports are offset from Tecnogex's (3306/8765/8099)
+# so both projects can run on this machine at the same time.
+
+networks:
+  laundry_network_development:
+    driver: bridge
+
+services:
+  mysql-development:
+    container_name: laundry-mysql-development
+    image: mysql:8.0.30
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-laundry_dev_root_pw}
+      MYSQL_DATABASE: gateway_service
+    ports:
+      - '3310:3306'
+    volumes:
+      - mysql-data-development:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - laundry_network_development
+
+  phpmyadmin:
+    container_name: laundry-phpmyadmin
+    image: phpmyadmin/phpmyadmin:5.2.1
+    environment:
+      PMA_HOST: mysql-development
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD:-laundry_dev_root_pw}
+      PMA_PORT: 3306
+    ports:
+      - '8770:80'
+    depends_on:
+      - mysql-development
+    restart: always
+    networks:
+      - laundry_network_development
+
+  adminer:
+    container_name: laundry-adminer
+    image: adminer
+    ports:
+      - '8110:8080'
+    depends_on:
+      - mysql-development
+    restart: always
+    networks:
+      - laundry_network_development
+
+volumes:
+  mysql-data-development:

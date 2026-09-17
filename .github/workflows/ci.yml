@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      commerce: ${{ steps.filter.outputs.commerce }}
+      finance: ${{ steps.filter.outputs.finance }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+      growth: ${{ steps.filter.outputs.growth }}
+      logistics: ${{ steps.filter.outputs.logistics }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            commerce:
+              - 'commerce-service/**'
+            finance:
+              - 'finance-service/**'
+            gateway:
+              - 'gateway-service/**'
+            growth:
+              - 'growth-service/**'
+            logistics:
+              - 'logistics-service/**'
+
+  build-and-test:
+    name: ${{ matrix.service }}
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: commerce-service
+            changed: ${{ needs.changes.outputs.commerce }}
+          - service: finance-service
+            changed: ${{ needs.changes.outputs.finance }}
+          - service: gateway-service
+            changed: ${{ needs.changes.outputs.gateway }}
+          - service: growth-service
+            changed: ${{ needs.changes.outputs.growth }}
+          - service: logistics-service
+            changed: ${{ needs.changes.outputs.logistics }}
+    steps:
+      - name: Checkout
+        if: matrix.changed == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: matrix.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        if: matrix.changed == 'true'
+        working-directory: ${{ matrix.service }}
+        run: npm ci
+
+      - name: Type-check & build
+        if: matrix.changed == 'true'
+        working-directory: ${{ matrix.service }}
+        run: npm run build
+
+      - name: Test
+        if: matrix.changed == 'true'
+        working-directory: ${{ matrix.service }}
+        run: npm test -- --ci
+
+  ci-success:
+    name: CI success
+    if: always()
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check matrix result
+        run: |
+          if [ "${{ needs.build-and-test.result }}" != "success" ]; then
+            echo "One or more services failed."
+            exit 1
+          fi

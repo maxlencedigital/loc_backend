@@ -1,0 +1,14 @@
+# Environment files (secrets) - never commit actual env files
+.env
+.env.*
+!.env.example
+
+# Dependencies & build output
+node_modules/
+dist/
+coverage/
+
+# OS / editor
+.DS_Store
+npm-debug.log
+yarn-error.log

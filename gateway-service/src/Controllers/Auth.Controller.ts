@@ -1,0 +1,80 @@
+import { Request, Response } from "express";
+import { AuthService } from "../Services/Auth.Service.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+
+/**
+ * @openapi
+ * /auth/register:
+ *   post:
+ *     summary: Create an account
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, email, phoneNumber, password]
+ *             properties:
+ *               name: { type: string }
+ *               email: { type: string }
+ *               phoneNumber: { type: string }
+ *               password: { type: string }
+ *               role: { type: string, enum: [admin, staff, driver, customer] }
+ *     responses:
+ *       201:
+ *         description: Account created.
+ *       409:
+ *         description: An account with this email already exists.
+ */
+const register = async (req: Request, res: Response) => {
+  try {
+    const result = await AuthService.register(req.body);
+    return handleSuccessResponse(
+      { statusCode: created, result },
+      res,
+      "Account created successfully."
+    );
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
+};
+
+/**
+ * @openapi
+ * /auth/login:
+ *   post:
+ *     summary: Log in and receive a JWT
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email: { type: string }
+ *               password: { type: string }
+ *     responses:
+ *       200:
+ *         description: Login successful — returns a Bearer token.
+ *       401:
+ *         description: Invalid email or password.
+ */
+const login = async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    const result = await AuthService.login(email, password);
+    return handleSuccessResponse(
+      { statusCode: successCode, result },
+      res,
+      "Login successful."
+    );
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
+};
+
+export const AuthController = { register, login };
