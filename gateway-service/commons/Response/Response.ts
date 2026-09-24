@@ -35,7 +35,9 @@ const handleErrorResponse = (error: unknown, res: Response) => {
   if (error instanceof CustomException) {
     return res.status(error.errorCode).json({
       statusCode: error.errorCode,
-      result: null,
+      // Usually null. Carries structured detail when the client needs to act
+      // on more than the message (e.g. OTP attempts remaining).
+      result: error.data ?? null,
       displayMessage: error.displayMessage,
       status: false,
     });

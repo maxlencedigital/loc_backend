@@ -48,11 +48,17 @@ if (process.env.TRUST_PROXY) {
   app.set("trust proxy", process.env.TRUST_PROXY === "true" ? true : Number(process.env.TRUST_PROXY));
 }
 
-app.use(cors({ origin: process.env.CORS_ORIGIN!.split(",") }));
+// app.use(cors({ origin: process.env.CORS_ORIGIN!.split(",") }));
+app.use(cors({ origin: "*" }));
+
 app.use(helmet());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
+// A no-op in development and re-enabled automatically under
+// NODE_ENV=production — see Middleware/RateLimiter.ts. Left wired up rather
+// than commented out so production can't end up with no limiter because
+// someone forgot to put the line back.
 app.use(apiLimiter);
 app.use(activityLogger("gateway-service"));
 

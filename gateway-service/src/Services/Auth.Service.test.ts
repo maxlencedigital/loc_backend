@@ -9,7 +9,42 @@ jest.mock("../Queries/User.Query.js", () => ({
     create: jest.fn(),
     findByEmail: jest.fn(),
     findById: jest.fn(),
+    findByPhoneNumber: jest.fn(),
+    findByOAuthIdentity: jest.fn(),
+    setPassword: jest.fn(),
+    linkOAuthIdentity: jest.fn(),
   },
+}));
+
+// Auth.Service now reaches the OTP flows, which import the OtpChallenge model
+// and therefore Sequelize.Connection.Db — which throws at import time without
+// DB_* env vars. Mocking the Query keeps that chain out of this unit test.
+jest.mock("../Queries/OtpChallenge.Query.js", () => ({
+  OtpChallengeQuery: {
+    create: jest.fn(),
+    findById: jest.fn(),
+    recordAttempt: jest.fn(),
+    markConsumed: jest.fn(),
+    countRecentFor: jest.fn().mockResolvedValue(0),
+    findLatestFor: jest.fn().mockResolvedValue(null),
+    deleteExpiredBefore: jest.fn(),
+  },
+}));
+
+// Keeps OTP codes out of the test output, and makes it explicit that nothing
+// here actually dispatches an SMS or email.
+jest.mock("./OtpSender.Service.js", () => ({
+  OtpSender: {
+    // Must resolve, not return undefined: the anti-enumeration paths call
+    // .catch() on the result to swallow provider outages.
+    sendSms: jest.fn().mockResolvedValue(undefined),
+    sendEmail: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
+// Would otherwise make real network calls to Google/Facebook.
+jest.mock("./OAuth.Service.js", () => ({
+  OAuthService: { verify: jest.fn() },
 }));
 
 import { UserQuery } from "../Queries/User.Query.js";

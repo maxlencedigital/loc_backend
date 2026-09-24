@@ -29,6 +29,28 @@ services:
     networks:
       - laundry_network_development
 
+  # Shared by all 5 services for caching and for the rate limiter's counters.
+  # `appendonly` is deliberately OFF: everything stored here is derived data
+  # that can be rebuilt from MySQL, so paying for disk persistence buys
+  # nothing — a cold Redis just means a brief spell of cache misses.
+  # maxmemory-policy allkeys-lru so it evicts old keys under pressure instead
+  # of refusing writes (the default `noeviction` would turn a full cache into
+  # hard errors on every SET).
+  redis:
+    container_name: laundry-redis
+    image: redis:7.4-alpine
+    command: redis-server --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - '6390:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    restart: always
+    networks:
+      - laundry_network_development
+
   phpmyadmin:
     container_name: laundry-phpmyadmin
     image: phpmyadmin/phpmyadmin:5.2.1
@@ -69,6 +91,7 @@ services:
       NODE_ENV: development
       DB_HOST: mysql-development
       DB_PORT: '3306'
+      REDIS_URL: redis://redis:6379
       COMMERCE_SERVICE_URL: http://commerce-service:5001
       LOGISTICS_SERVICE_URL: http://logistics-service:5002
       FINANCE_SERVICE_URL: http://finance-service:5003
@@ -77,6 +100,8 @@ services:
       - '5000:5000'
     depends_on:
       mysql-development:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: always
     networks:
@@ -89,10 +114,13 @@ services:
     environment:
       DB_HOST: mysql-development
       DB_PORT: '3306'
+      REDIS_URL: redis://redis:6379
     ports:
       - '5001:5001'
     depends_on:
       mysql-development:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: always
     networks:
@@ -105,10 +133,13 @@ services:
     environment:
       DB_HOST: mysql-development
       DB_PORT: '3306'
+      REDIS_URL: redis://redis:6379
     ports:
       - '5002:5002'
     depends_on:
       mysql-development:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: always
     networks:
@@ -121,10 +152,13 @@ services:
     environment:
       DB_HOST: mysql-development
       DB_PORT: '3306'
+      REDIS_URL: redis://redis:6379
     ports:
       - '5003:5003'
     depends_on:
       mysql-development:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: always
     networks:
@@ -137,10 +171,13 @@ services:
     environment:
       DB_HOST: mysql-development
       DB_PORT: '3306'
+      REDIS_URL: redis://redis:6379
     ports:
       - '5004:5004'
     depends_on:
       mysql-development:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: always
     networks:

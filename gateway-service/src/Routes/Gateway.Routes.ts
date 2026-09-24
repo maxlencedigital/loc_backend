@@ -1,5 +1,6 @@
 import express from "express";
 import { AuthController } from "../Controllers/Auth.Controller.js";
+import { UserAuthController } from "../Controllers/UserAuth.Controller.js";
 import { AuditController } from "../Controllers/Audit.Controller.js";
 import { HealthController } from "../Controllers/Health.Controller.js";
 import { NotificationController } from "../Controllers/Notification.Controller.js";
@@ -20,6 +21,20 @@ router.get("/health", HealthController.check);
 router.post("/auth/register", authLimiter, AuthController.register);
 router.post("/auth/login", authLimiter, AuthController.login);
 router.post("/auth/refresh", authLimiter, AuthController.refresh);
+
+// Customer-facing auth: phone-OTP registration, phone-OTP login, social
+// login, and password reset. All behind authLimiter for the same reason as
+// the routes above — these are the brute-force surface. The OTP flows are
+// additionally throttled per phone/email inside Otp.Service, so cycling IPs
+// can't be used to spam one person's number or run up the SMS bill.
+router.post("/auth/register/send-otp", authLimiter, UserAuthController.registerSendOtp);
+router.post("/auth/register/verify-otp", authLimiter, UserAuthController.registerVerifyOtp);
+router.post("/auth/register/complete", authLimiter, UserAuthController.registerComplete);
+router.post("/auth/login/otp/request", authLimiter, UserAuthController.loginOtpRequest);
+router.post("/auth/login/otp/verify", authLimiter, UserAuthController.loginOtpVerify);
+router.post("/auth/login/oauth", authLimiter, UserAuthController.loginOAuth);
+router.post("/auth/password/forgot", authLimiter, UserAuthController.passwordForgot);
+router.post("/auth/password/reset", authLimiter, UserAuthController.passwordReset);
 router.post(
   "/auth/admin-users",
   verifyToken,

@@ -3,6 +3,10 @@
 module.exports = {
   presets: [
     ["@babel/preset-env", { targets: { node: "current" } }],
-    "@babel/preset-typescript",
+    // allowDeclareFields is required for Sequelize model classes, which use
+    // `declare id: string` to describe columns without emitting a field that
+    // would shadow Sequelize's own getters. Without it Babel throws on any
+    // test that transitively imports a model.
+    ["@babel/preset-typescript", { allowDeclareFields: true }],
   ],
 };

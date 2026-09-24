@@ -89,18 +89,63 @@ export const buildGatewaySpec = () => {
         },
       },
     },
-    servers: [
-      { url: `http://localhost:${process.env.PORT || 5000}`, description: "Local development" },
+    // Swagger UI renders tag sections in the order declared here; anything
+    // not listed falls in afterwards in discovery order. Without this, the
+    // auth groups get scattered — "Auth" ends up several sections away from
+    // "Auth - Login", which makes the one module a client integrates first
+    // the hardest one to find.
+    tags: [
+      { name: "Auth", description: "Sign-in, token refresh, and account creation." },
+      {
+        name: "Auth - Registration",
+        description: "Customer sign-up with phone verified by OTP. Not yet implemented.",
+      },
+      {
+        name: "Auth - Login",
+        description:
+          "Customer sign-in by phone OTP or social provider. Email + password is under 'Auth'. Not yet implemented.",
+      },
+      {
+        name: "Auth - Password Reset",
+        description: "Forgotten-password recovery by email OTP. Not yet implemented.",
+      },
+      { name: "Security", description: "Audit log and backup status." },
+      { name: "Access Control", description: "Access policy rules." },
+      { name: "Notifications", description: "Outbound notification dispatch." },
     ],
+    // Relative on purpose. A hardcoded "http://localhost:5000" breaks "Try it
+    // out" whenever the docs are opened on any other host — 127.0.0.1, a LAN
+    // IP, or a deployed domain — because the browser then makes a
+    // cross-origin request that CORS rejects, surfacing only as
+    // "Failed to fetch". Relative means requests always go back to whichever
+    // host served the page, so it is same-origin everywhere.
+    servers: [{ url: "/", description: "This server" }],
   };
 
   const options: SwaggerJSDocOptions = {
     swaggerDefinition,
     apis: [
+      // Relative to this file: the source tree under tsx, the compiled tree
+      // under node. Covers the normal local-dev case.
       toGlob(__dirname, "../Controllers/*.ts"),
       toGlob(__dirname, "../Controllers/*.js"),
       toGlob(__dirname, "../Routes/*.ts"),
       toGlob(__dirname, "../Routes/*.js"),
+      // Also glob this service's own SOURCE via backendRoot, exactly as
+      // aggregateSpecs.ts does for the other four.
+      //
+      // Needed because the build-time snapshot generator runs against dist/,
+      // and tsc only preserves a JSDoc comment that is attached to emitted
+      // code. A documentation-only file (UserAuth.Contract.ts — @openapi
+      // blocks with no handlers under them) loses every block but the first
+      // during compilation, so those endpoints silently vanished from the
+      // generated spec while their tag headings still rendered. Reading the
+      // .ts source keeps comment-only contract files intact.
+      //
+      // Matches nothing at container runtime, where no sibling source exists
+      // — harmless, since that path serves the pre-generated snapshot anyway.
+      toGlob(backendRoot, "gateway-service/src/Controllers/*.ts"),
+      toGlob(backendRoot, "gateway-service/src/Routes/*.ts"),
     ],
   };
 
