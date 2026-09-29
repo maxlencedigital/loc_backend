@@ -49,7 +49,9 @@ services:
     # Only the gateway migrates: the other four have no models yet, so they
     # have no migrations directory for `migrate deploy` to read. Add the same
     # step to a service as soon as it gets its first model.
-    buildCommand: npm ci && npm run build && npm run db:migrate
+    # --include=dev: NODE_ENV=production also applies at build time and would skip
+    # the TypeScript and @types packages tsc needs. generate:openapi snapshots the docs.
+    buildCommand: npm ci --include=dev && npm run build && npm run generate:openapi && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -158,7 +160,7 @@ services:
     region: singapore
     branch: dev
     rootDir: commerce-service
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -189,7 +191,7 @@ services:
     region: singapore
     branch: dev
     rootDir: logistics-service
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -220,7 +222,7 @@ services:
     region: singapore
     branch: dev
     rootDir: finance-service
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -251,7 +253,7 @@ services:
     region: singapore
     branch: dev
     rootDir: growth-service
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
