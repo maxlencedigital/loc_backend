@@ -9,15 +9,8 @@ export interface IdentifiedRequest extends Request {
   user?: { id: string; role: UserRole };
 }
 
-/**
- * Applied globally, to every route except /health. This service is
- * never meant to be reachable except through the gateway (network
- * isolation is the real boundary in a real deployment — this is
- * defense-in-depth for local dev and anyone who mis-wires that).
- * The gateway is the only holder of INTERNAL_SERVICE_SECRET; without
- * it, x-user-id / x-user-role are just headers anyone could set by
- * hand, so they must never be trusted without this check passing first.
- */
+// Applied to every route except /health. Only the gateway holds this secret;
+// without the check, x-user-id and x-user-role are headers anyone can set.
 const requireInternalSecret = (req: Request, res: Response, next: NextFunction) => {
   const secret = req.header("x-internal-secret");
   if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
@@ -29,10 +22,8 @@ const requireInternalSecret = (req: Request, res: Response, next: NextFunction) 
   next();
 };
 
-/**
- * Reads the identity the gateway already verified via JWT. Only
- * meaningful once requireInternalSecret has already run — see above.
- */
+// Reads the identity the gateway already verified by JWT. Only meaningful once
+// requireInternalSecret has run.
 const requireIdentity = (req: IdentifiedRequest, res: Response, next: NextFunction) => {
   const userId = req.header("x-user-id");
   const role = req.header("x-user-role") as UserRole | undefined;
@@ -46,12 +37,8 @@ const requireIdentity = (req: IdentifiedRequest, res: Response, next: NextFuncti
   next();
 };
 
-/**
- * `super_admin` always passes, regardless of which roles are listed —
- * it sits above the rest of the hierarchy (currently just admin, with
- * staff/driver/customer below that; more tiers can slot in between
- * later without touching every requireRole(...) call site).
- */
+// `super_admin` always passes, whichever roles are listed — it sits above the
+// rest of the hierarchy, so new tiers can slot in without touching call sites.
 const requireRole = (...roles: UserRole[]) => {
   return (req: IdentifiedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {

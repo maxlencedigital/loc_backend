@@ -2,14 +2,8 @@ import { CustomException } from "../../commons/Exception/CustomException.js";
 import { badRequest, serverError, unauthorized } from "../../commons/Utils/StatusCode.js";
 import { OAuthProvider } from "../Models/User/User.Interface.js";
 
-/**
- * Verifies a provider token SERVER-SIDE and returns the identity the provider
- * vouches for.
- *
- * The client sends only a token. It does not send its email or name — those
- * are read out of the verified token instead. Trusting a client-supplied
- * profile would mean anyone could sign in as any email by typing it in.
- */
+// Verifies a provider token SERVER-SIDE. The client sends only a token: a
+// client-supplied email would let anyone sign in as any address.
 export interface VerifiedOAuthIdentity {
   provider: OAuthProvider;
   /** The provider's stable user id. Preferred over email, which can change. */
@@ -27,25 +21,20 @@ const requireEnv = (key: string, provider: string): string => {
   const value = process.env[key];
   if (!value) {
     // 500, not 400: the caller did nothing wrong, the server is misconfigured.
-    throw new CustomException(
-      `${provider} login is not configured on this server.`,
-      serverError
-    );
+    throw new CustomException(`${provider} login is not configured on this server.`, serverError);
   }
   return value;
 };
 
-/**
- * Google ID token. Verified against Google's own tokeninfo endpoint, which
- * checks the signature and expiry for us.
- *
- * `aud` is then checked against our own client id — this is the step that
- * matters most and is the easiest to skip: a validly-signed Google token
- * issued to a *different* application would otherwise be accepted here, so
- * anyone with any Google app could mint logins for this platform.
- */
+// Google's tokeninfo endpoint checks the signature and expiry; the `aud` check
+// below is ours, and skipping it would accept a validly-signed token issued to
+// ANY other Google app. GOOGLE_AUTH_CLIENT_ID is a comma-separated list because
+// Google issues a separate client id per platform (web, Android, iOS).
 const verifyGoogle = async (idToken: string): Promise<VerifiedOAuthIdentity> => {
-  const clientId = requireEnv("GOOGLE_AUTH_CLIENT_ID", "Google");
+  const clientIds = requireEnv("GOOGLE_AUTH_CLIENT_ID", "Google")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
 
   const response = await fetch(`${GOOGLE_TOKENINFO}?id_token=${encodeURIComponent(idToken)}`);
   if (!response.ok) {
@@ -53,7 +42,7 @@ const verifyGoogle = async (idToken: string): Promise<VerifiedOAuthIdentity> => 
   }
   const payload = (await response.json()) as Record<string, string>;
 
-  if (payload.aud !== clientId) {
+  if (!payload.aud || !clientIds.includes(payload.aud)) {
     throw new CustomException("That token was issued for a different application.", unauthorized);
   }
   if (!payload.sub || !payload.email) {
@@ -65,18 +54,17 @@ const verifyGoogle = async (idToken: string): Promise<VerifiedOAuthIdentity> => 
     subject: payload.sub,
     email: payload.email.toLowerCase(),
     name: payload.name ?? null,
-    emailVerified: payload.email_verified === "true",
+    // tokeninfo reports this as the string "true", but other Google endpoints
+    // send a real boolean; unnormalised, a boolean would read as unverified.
+    emailVerified: String(payload.email_verified) === "true",
   };
 };
 
-/**
- * Facebook user access token, checked via debug_token using an app access
- * token. debug_token is what confirms the token was issued to THIS app —
- * without that check any Facebook token would pass.
- */
+// debug_token, called with an app access token, is what confirms the user token
+// was issued to THIS app — without it any valid Facebook token would pass.
 const verifyFacebook = async (accessToken: string): Promise<VerifiedOAuthIdentity> => {
-  const appId = requireEnv("FACEBOOK_APP_ID", "Facebook");
-  const appSecret = requireEnv("FACEBOOK_APP_SECRET", "Facebook");
+  const appId = requireEnv("FACEBOOK_AUTH_APP_ID", "Facebook");
+  const appSecret = requireEnv("FACEBOOK_AUTH_APP_SECRET", "Facebook");
   const appAccessToken = `${appId}|${appSecret}`;
 
   const debugResponse = await fetch(
@@ -99,8 +87,8 @@ const verifyFacebook = async (accessToken: string): Promise<VerifiedOAuthIdentit
   const profile = (await profileResponse.json()) as { id: string; name?: string; email?: string };
 
   if (!profile.email) {
-    // Facebook accounts registered by phone have no email, and the whole
-    // account-matching model here keys on email.
+    // Facebook accounts registered by phone have no email, and account matching
+    // here keys on email.
     throw new CustomException(
       "That Facebook account has no email address. Use another sign-in method.",
       badRequest
@@ -117,22 +105,11 @@ const verifyFacebook = async (accessToken: string): Promise<VerifiedOAuthIdentit
   };
 };
 
-/**
- * Apple is NOT implemented. Verifying Sign in with Apple properly means
- * fetching Apple's JWKS, validating the identityToken's signature against the
- * matching key, and checking iss/aud/exp — plus a Service ID, Team ID, Key ID
- * and .p8 private key that this project does not have. (Tecnogex has an
- * APPLE_CLIENT_ID but its Apple login was never actually wired up, so there's
- * no working configuration to copy either.)
- *
- * Failing loudly is deliberate: a stub that accepted tokens without verifying
- * them would be an authentication bypass.
- */
+// Not implemented: proper verification needs Apple's JWKS plus a Service ID,
+// Team ID, Key ID and .p8 key this project does not have. Fails loudly on
+// purpose — a stub that accepted unverified tokens would be an auth bypass.
 const verifyApple = async (_identityToken: string): Promise<VerifiedOAuthIdentity> => {
-  throw new CustomException(
-    "Apple sign-in is not available yet.",
-    serverError
-  );
+  throw new CustomException("Apple sign-in is not available yet.", serverError);
 };
 
 const verify = async (provider: OAuthProvider, token: string): Promise<VerifiedOAuthIdentity> => {

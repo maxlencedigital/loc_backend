@@ -1,13 +1,15 @@
 import { Request, Response } from "express";
 
-// Factory-mocked so this never constructs the real Sequelize instance
-// (which would need DB_* env vars) or touches a real database.
-jest.mock("../DB/Sequelize.Connection.Db.js", () => ({
-  sequelize: { authenticate: jest.fn() },
+// Factory-mocked so this never constructs the real Prisma client (which would
+// need DATABASE_URL / DB_* env vars) or opens a connection pool.
+jest.mock("../DB/Prisma.Connection.Db.js", () => ({
+  prisma: { $queryRaw: jest.fn() },
 }));
 
-import { sequelize } from "../DB/Sequelize.Connection.Db.js";
+import { prisma } from "../DB/Prisma.Connection.Db.js";
 import { HealthController } from "./Health.Controller.js";
+
+const queryRaw = prisma.$queryRaw as unknown as jest.Mock;
 
 const mockRes = () => {
   const res = {} as Response;
@@ -18,7 +20,7 @@ const mockRes = () => {
 
 describe("HealthController.check", () => {
   it("returns 200 when the database is reachable", async () => {
-    (sequelize.authenticate as jest.Mock).mockResolvedValue(undefined);
+    queryRaw.mockResolvedValue([{ "?column?": 1 }]);
     const res = mockRes();
 
     await HealthController.check({} as Request, res);
@@ -28,7 +30,7 @@ describe("HealthController.check", () => {
   });
 
   it("returns 503, not a blind 200, when the database is unreachable", async () => {
-    (sequelize.authenticate as jest.Mock).mockRejectedValue(new Error("connection refused"));
+    queryRaw.mockRejectedValue(new Error("connection refused"));
     const res = mockRes();
 
     await HealthController.check({} as Request, res);

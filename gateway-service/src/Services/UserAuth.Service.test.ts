@@ -1,9 +1,8 @@
 import bcrypt from "bcrypt";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 
-// Same factory-mock approach as Auth.Service.test.ts: keeps the Sequelize
-// model/connection chain (which throws at import without DB_* env vars) out
-// of these unit tests.
+// Same factory-mock approach as Auth.Service.test.ts: keeps the Prisma client
+// chain, which throws at import without a database URL, out of these tests.
 jest.mock("../Queries/User.Query.js", () => ({
   UserQuery: {
     create: jest.fn(),

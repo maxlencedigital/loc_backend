@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { sequelize } from "../DB/Sequelize.Connection.Db.js";
+import { prisma } from "../DB/Prisma.Connection.Db.js";
 import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
 import { successCode, serviceUnavailable } from "../../commons/Utils/StatusCode.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
@@ -18,7 +18,9 @@ import { CustomException } from "../../commons/Exception/CustomException.js";
  */
 const check = async (_req: Request, res: Response) => {
   try {
-    await sequelize.authenticate();
+    // A real round trip: $connect() alone can succeed against a pool that has
+    // not reached Postgres, making an unreachable database report healthy.
+    await prisma.$queryRaw`SELECT 1`;
     return handleSuccessResponse(
       { statusCode: successCode, result: { service: "growth-service", db: "up" } },
       res,

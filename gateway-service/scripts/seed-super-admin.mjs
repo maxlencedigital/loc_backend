@@ -1,15 +1,9 @@
 import "dotenv/config";
 import bcrypt from "bcrypt";
 
-// Deliberately NOT an HTTP endpoint. /auth/admin-users (super_admin-only)
-// covers every account creation after this one — but creating the FIRST
-// super_admin needs a path that doesn't depend on a super_admin already
-// existing. Requiring direct DB/deploy access here (not just an API
-// token) keeps "who can mint the top of the role hierarchy" a strictly
-// higher bar than "who can call an authenticated endpoint". Run with
-// `npm run seed:super-admin` after `npm run build`.
-const { sequelize } = await import("../dist/src/DB/Sequelize.Connection.Db.js");
-const { UserModel } = await import("../dist/src/Models/User/User.Model.js");
+// Deliberately NOT an HTTP endpoint: requiring deploy access is a higher bar
+// than an API token. Run `npm run db:migrate` first — this creates no tables.
+const { prisma, disconnectDB } = await import("../dist/src/DB/Prisma.Connection.Db.js");
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -27,25 +21,35 @@ if (password.length < MIN_PASSWORD_LENGTH) {
   process.exit(1);
 }
 
-await sequelize.authenticate();
-await sequelize.sync({ alter: false });
-
 const normalizedEmail = email.toLowerCase().trim();
-const existing = await UserModel.findOne({ where: { email: normalizedEmail } });
-if (existing) {
-  console.log(`A user with email ${normalizedEmail} already exists (role: ${existing.role}). Nothing to do.`);
-  process.exit(0);
+
+try {
+  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (existing) {
+    console.log(
+      `A user with email ${normalizedEmail} already exists (role: ${existing.role}). Nothing to do.`
+    );
+  } else {
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email: normalizedEmail,
+        phoneNumber,
+        passwordHash,
+        role: "super_admin",
+        isActive: true,
+      },
+    });
+    console.log(`Created super_admin ${user.email} (id: ${user.id}).`);
+  }
+} catch (error) {
+  console.error("Seeding failed:", error instanceof Error ? error.message : error);
+  await disconnectDB();
+  process.exit(1);
 }
 
-const passwordHash = await bcrypt.hash(password, 10);
-const user = await UserModel.create({
-  name,
-  email: normalizedEmail,
-  phoneNumber,
-  passwordHash,
-  role: "super_admin",
-  isActive: true,
-});
-
-console.log(`Created super_admin ${user.email} (id: ${user.id}).`);
+// Released explicitly: the pool keeps the process alive otherwise, and a seed
+// script that never exits will hang a deploy step waiting on it.
+await disconnectDB();
 process.exit(0);

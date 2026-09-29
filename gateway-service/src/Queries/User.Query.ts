@@ -1,47 +1,52 @@
-import { UserModel } from "../Models/User/User.Model.js";
-import { IUserCreate, OAuthProvider } from "../Models/User/User.Interface.js";
+import { prisma } from "../DB/Prisma.Connection.Db.js";
+import { IUser, IUserCreate, OAuthProvider } from "../Models/User/User.Interface.js";
 
-const create = async (userDetails: IUserCreate): Promise<UserModel> => {
-  return UserModel.create(userDetails);
+// Returns the domain interface, not Prisma's generated type: everything above
+// this layer then has no ORM dependency at all.
+const create = async (userDetails: IUserCreate): Promise<IUser> => {
+  return prisma.user.create({ data: userDetails });
 };
 
-const findByEmail = async (email: string): Promise<UserModel | null> => {
-  return UserModel.findOne({ where: { email: email.toLowerCase().trim() } });
+const findByEmail = async (email: string): Promise<IUser | null> => {
+  return prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
 };
 
-const findById = async (id: string): Promise<UserModel | null> => {
-  return UserModel.findByPk(id);
+const findById = async (id: string): Promise<IUser | null> => {
+  return prisma.user.findUnique({ where: { id } });
 };
 
-const findByPhoneNumber = async (phoneNumber: string): Promise<UserModel | null> => {
-  return UserModel.findOne({ where: { phoneNumber: phoneNumber.trim() } });
+const findByPhoneNumber = async (phoneNumber: string): Promise<IUser | null> => {
+  return prisma.user.findUnique({ where: { phoneNumber: phoneNumber.trim() } });
 };
 
-/**
- * Matched on before email, because a provider's `sub` is stable for the life
- * of the account while the email attached to it can be changed by the user.
- */
+// Matched before email: a provider's `sub` is stable for the account's life,
+// while the email attached to it can be changed by the user.
 const findByOAuthIdentity = async (
   provider: OAuthProvider,
   subject: string
-): Promise<UserModel | null> => {
-  return UserModel.findOne({ where: { oauthProvider: provider, oauthSubject: subject } });
+): Promise<IUser | null> => {
+  return prisma.user.findUnique({
+    where: { oauthIdentity: { oauthProvider: provider, oauthSubject: subject } },
+  });
 };
 
+// Throws if the row is gone rather than reporting success for a write that
+// never happened — which a password reset in particular must not swallow.
 const setPassword = async (id: string, passwordHash: string): Promise<void> => {
-  await UserModel.update({ passwordHash }, { where: { id } });
+  await prisma.user.update({ where: { id }, data: { passwordHash } });
 };
 
-/**
- * Links a social identity onto an account that already exists under the same
- * email (signed up with a password first, then used "Continue with Google").
- */
+// Links a social identity onto an account that already exists under the same
+// email: signed up with a password first, then used "Continue with Google".
 const linkOAuthIdentity = async (
   id: string,
   provider: OAuthProvider,
   subject: string
 ): Promise<void> => {
-  await UserModel.update({ oauthProvider: provider, oauthSubject: subject }, { where: { id } });
+  await prisma.user.update({
+    where: { id },
+    data: { oauthProvider: provider, oauthSubject: subject },
+  });
 };
 
 export const UserQuery = {

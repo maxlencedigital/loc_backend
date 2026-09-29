@@ -12,13 +12,8 @@ const __dirname = path.dirname(__filename);
 // on Windows returns backslashes, which silently match zero files.
 const toGlob = (...segments: string[]) => path.join(...segments).split(path.sep).join("/");
 
-/**
- * Walks up from this file to the folder holding all 5 sibling service
- * folders — a fixed hop count would be wrong depending on whether this
- * runs as source (tsx, from src/Swagger) or compiled output (node, from
- * dist/src/Swagger, one level deeper). Falls back to `startDir` (today's
- * behavior: aggregation silently finds nothing) if never found.
- */
+// Walks up to the folder holding all 5 service folders. A fixed hop count
+// would be wrong, since dist/ output sits one level deeper than source.
 const findBackendRoot = (startDir: string): string => {
   let dir = startDir;
   for (let i = 0; i < 6; i++) {
@@ -32,24 +27,12 @@ const findBackendRoot = (startDir: string): string => {
 
 const backendRoot = findBackendRoot(__dirname);
 
-// Written by `npm run generate:openapi` at Docker build time, when the
-// build context is the whole monorepo — the one place sibling services'
-// source is actually available (see gateway-service/Dockerfile and
-// scripts/generate-openapi.mjs). Once packaged into the gateway's own
-// container, sibling folders no longer exist on disk at runtime, so
-// live aggregation would silently return an empty spec for them.
-// Resolved against cwd (this service's own root, whether that's the repo
-// checkout in dev or /app in the container) rather than __dirname, since
-// __dirname's depth differs between source (src/Swagger) and compiled
-// output (dist/src/Swagger).
+// Written by `npm run generate:openapi` at Docker build time, the one point
+// where sibling source exists. Against cwd, since __dirname's depth varies.
 const staticSpecPath = path.join(process.cwd(), "openapi.generated.json");
 
-/**
- * The gateway's own spec (auth/audit/health/etc.) — built fresh every
- * time, live filesystem introspection over just this service's own
- * Controllers/Routes. Reused by both setupSwagger (live dev) and
- * scripts/generate-openapi.mjs (static build-time snapshot).
- */
+// The gateway's own spec, built fresh from its own Controllers/Routes. Used by
+// setupSwagger (live dev) and generate-openapi.mjs (build-time snapshot).
 export const buildGatewaySpec = () => {
   const swaggerDefinition = {
     openapi: "3.0.0",
@@ -89,36 +72,29 @@ export const buildGatewaySpec = () => {
         },
       },
     },
-    // Swagger UI renders tag sections in the order declared here; anything
-    // not listed falls in afterwards in discovery order. Without this, the
-    // auth groups get scattered — "Auth" ends up several sections away from
-    // "Auth - Login", which makes the one module a client integrates first
-    // the hardest one to find.
+    // Swagger UI renders tags in this order. Without it the auth groups scatter,
+    // making the first module a client integrates the hardest one to find.
     tags: [
       { name: "Auth", description: "Sign-in, token refresh, and account creation." },
       {
         name: "Auth - Registration",
-        description: "Customer sign-up with phone verified by OTP. Not yet implemented.",
+        description: "Customer sign-up: phone verified by OTP mid-form, before any account is created.",
       },
       {
         name: "Auth - Login",
         description:
-          "Customer sign-in by phone OTP or social provider. Email + password is under 'Auth'. Not yet implemented.",
+          "Customer sign-in by phone OTP or social provider. Email + password is under 'Auth'.",
       },
       {
         name: "Auth - Password Reset",
-        description: "Forgotten-password recovery by email OTP. Not yet implemented.",
+        description: "Forgotten-password recovery by email OTP.",
       },
       { name: "Security", description: "Audit log and backup status." },
       { name: "Access Control", description: "Access policy rules." },
       { name: "Notifications", description: "Outbound notification dispatch." },
     ],
-    // Relative on purpose. A hardcoded "http://localhost:5000" breaks "Try it
-    // out" whenever the docs are opened on any other host — 127.0.0.1, a LAN
-    // IP, or a deployed domain — because the browser then makes a
-    // cross-origin request that CORS rejects, surfacing only as
-    // "Failed to fetch". Relative means requests always go back to whichever
-    // host served the page, so it is same-origin everywhere.
+    // Relative on purpose: a hardcoded host breaks "Try it out" from any other
+    // address with an opaque "Failed to fetch". Relative is always same-origin.
     servers: [{ url: "/", description: "This server" }],
   };
 
@@ -131,19 +107,8 @@ export const buildGatewaySpec = () => {
       toGlob(__dirname, "../Controllers/*.js"),
       toGlob(__dirname, "../Routes/*.ts"),
       toGlob(__dirname, "../Routes/*.js"),
-      // Also glob this service's own SOURCE via backendRoot, exactly as
-      // aggregateSpecs.ts does for the other four.
-      //
-      // Needed because the build-time snapshot generator runs against dist/,
-      // and tsc only preserves a JSDoc comment that is attached to emitted
-      // code. A documentation-only file (UserAuth.Contract.ts — @openapi
-      // blocks with no handlers under them) loses every block but the first
-      // during compilation, so those endpoints silently vanished from the
-      // generated spec while their tag headings still rendered. Reading the
-      // .ts source keeps comment-only contract files intact.
-      //
-      // Matches nothing at container runtime, where no sibling source exists
-      // — harmless, since that path serves the pre-generated snapshot anyway.
+      // Also the .ts SOURCE: tsc only keeps JSDoc attached to emitted code, so a
+      // comment-only contract file loses every block but the first in dist/.
       toGlob(backendRoot, "gateway-service/src/Controllers/*.ts"),
       toGlob(backendRoot, "gateway-service/src/Routes/*.ts"),
     ],
@@ -152,13 +117,8 @@ export const buildGatewaySpec = () => {
   return swaggerJSDoc(options);
 };
 
-/**
- * The ONLY Swagger UI in the whole system. Every service's routes are
- * documented here, exactly as an app/website team would actually call
- * them (through the gateway) — see aggregateSpecs.ts. commerce/
- * logistics/finance/growth run no docs UI of their own, and aren't
- * meant to be reachable directly at all (see INTERNAL_SERVICE_SECRET).
- */
+// The ONLY Swagger UI in the system: every service's routes documented exactly
+// as a client calls them, through the gateway. The other four run no UI.
 const setupSwagger = (app: Express): void => {
   let swaggerSpec: any;
 
@@ -167,9 +127,8 @@ const setupSwagger = (app: Express): void => {
     // on disk here, so serve the snapshot generated at Docker build time.
     swaggerSpec = JSON.parse(fs.readFileSync(staticSpecPath, "utf-8"));
   } else {
-    // Local dev: sibling service folders are right there on disk, so
-    // build it live — editing a route's JSDoc updates the docs on the
-    // next request, no regeneration step needed.
+    // Local dev: sibling folders are on disk, so build live — editing a route's
+    // JSDoc updates the docs on the next request, with no regeneration step.
     const gatewaySpec = buildGatewaySpec();
     swaggerSpec = buildAggregatedSpec(gatewaySpec, backendRoot);
   }

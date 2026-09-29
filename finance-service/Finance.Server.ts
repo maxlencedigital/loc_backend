@@ -3,16 +3,15 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import { connectDB } from "./src/DB/Sequelize.Connection.Db.js";
+import { connectDB } from "./src/DB/Prisma.Connection.Db.js";
 import router from "./src/Routes/Finance.Routes.js";
 import { requireInternalSecret } from "./src/Middleware/Identity.js";
 import { apiLimiter } from "./src/Middleware/RateLimiter.js";
 
+// DATABASE_URL carries host, user, password and database in one string, so
+// the discrete DB_* vars are for local docker-compose only.
 const requiredEnvVars = [
-  "DB_NAME",
-  "DB_USER",
-  "DB_PASSWORD",
-  "DB_HOST",
+  ...(process.env.DATABASE_URL ? [] : ["DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST"]),
   "INTERNAL_SERVICE_SECRET",
   "CORS_ORIGIN",
 ];
@@ -22,9 +21,8 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
-// A short/guessable INTERNAL_SERVICE_SECRET lets anyone skip the gateway
-// entirely and forge x-user-id/x-user-role directly — fail at boot, not
-// silently accept whatever's in the env.
+// A guessable INTERNAL_SERVICE_SECRET lets anyone skip the gateway and forge
+// x-user-id/x-user-role — fail at boot rather than accept it silently.
 const MIN_SECRET_LENGTH = 32;
 if ((process.env.INTERNAL_SERVICE_SECRET as string).length < MIN_SECRET_LENGTH) {
   console.error(`INTERNAL_SERVICE_SECRET must be at least ${MIN_SECRET_LENGTH} random characters.`);
@@ -46,10 +44,7 @@ app.use(morgan("dev"));
 app.use(apiLimiter);
 
 // Every route except /health requires the gateway's internal secret,
-// registered before any route (including "/") so nothing can slip
-// past it. This service has no public Swagger UI — it's documented
-// as part of the gateway's single aggregated API doc, since clients
-// only ever call it through the gateway.
+// registered before any route (including "/") so nothing slips past it.
 app.use((req, res, next) => {
   if (req.path === "/health") return next();
   return requireInternalSecret(req, res, next);

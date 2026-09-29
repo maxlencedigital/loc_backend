@@ -1,0 +1,278 @@
+# Render Blueprint — creates all 5 services in one go.
+#
+# Use this INSTEAD of clicking "New Web Service" five times: Render reads
+# this file from the repo and provisions everything, already wired together
+# and sharing one generated secret.
+#   Dashboard -> Blueprints -> New Blueprint Instance -> this repo -> dev
+#
+# Deploys from `dev` on purpose: `dev` is the integration branch the frontend
+# and app teams point at, and CI (.github/workflows/ci.yml) gates it. `main`
+# is left alone for a future production blueprint.
+#
+# FREE TIER — known and accepted for this development environment:
+#   - A service sleeps after ~15 min idle and takes ~50s to wake. The first
+#     call through the gateway to a sleeping downstream service can therefore
+#     take ~100s: the gateway wakes, then the downstream wakes.
+#   - Free has no private networking, so all 5 get public URLs. The four
+#     downstream services are protected only by INTERNAL_SERVICE_SECRET —
+#     they reject every request that lacks it, except /health. That is why
+#     the secret is generated here and not copied from a local .env.
+#   - Free allows no persistent disk; nothing here needs one.
+
+envVarGroups:
+  # One group, so all 5 services share the SAME database and the SAME
+  # internal secret. Setting these per service invites a typo that would
+  # make one service silently reject the gateway's calls with 403.
+  - name: loc-shared
+    envVars:
+      # Supabase -> Project Settings -> Database -> Connection pooling.
+      # MUST be the POOLED string (port 6543), not the direct one (5432):
+      # free-tier hosts open and drop connections constantly, and the direct
+      # port's connection limit is exhausted within minutes by 5 services.
+      # sync:false means Render prompts for it and it never enters git.
+      - key: DATABASE_URL
+        sync: false
+      # Supabase's DIRECT string (port 5432), used only by `prisma migrate
+      # deploy` in the gateway's build command. Prisma Migrate takes a
+      # Postgres advisory lock, and a transaction-mode pooler hands each
+      # statement to a different backend — so the lock would be taken on one
+      # connection and released on another, leaving migrations hung or half
+      # applied. Same page in Supabase, above the pooling section.
+      - key: DIRECT_DATABASE_URL
+        sync: false
+      # Random 256-bit value, generated once and shared by all 5. On the free
+      # tier this is the only thing between the public internet and the
+      # downstream services, so it must not be the local dev value.
+      - key: INTERNAL_SERVICE_SECRET
+        generateValue: true
+
+services:
+  # ---------------------------------------------------------------------
+  # Gateway — the ONLY service the frontend and app teams ever call.
+  # Serves the single aggregated Swagger UI at /api-docs.
+  # ---------------------------------------------------------------------
+  - type: web
+    name: loc-gateway-service
+    runtime: node
+    plan: free
+    region: singapore
+    branch: dev
+    rootDir: gateway-service
+    # Migrations run here, in the build, rather than at server start. The
+    # build still has devDependencies (the Prisma CLI is one), and a failed
+    # migration fails the deploy instead of producing a running service whose
+    # tables are half-created. The server itself never alters the schema.
+    #
+    # Only the gateway migrates: the other four have no models yet, so they
+    # have no migrations directory for `migrate deploy` to read. Add the same
+    # step to a service as soon as it gets its first model.
+    buildCommand: npm ci && npm run build && npm run db:migrate
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - fromGroup: loc-shared
+      - key: NODE_ENV
+        value: production
+      # PORT is deliberately absent. Render assigns it and the code already
+      # reads process.env.PORT; pinning it makes the health check hang
+      # forever because Render probes a port nothing is listening on.
+      - key: DB_SCHEMA
+        value: gateway
+      - key: CACHE_NAMESPACE
+        value: gateway
+      # Signing key for issued JWTs. Generated, not copied: the local dev
+      # secret sits in a .env on a laptop, and whoever holds it could mint
+      # admin tokens against this deployment.
+      - key: JWT_SECRET
+        generateValue: true
+      # Wide open while the frontend team is still on localhost and preview
+      # URLs. Narrow to the real origins before launch.
+      - key: CORS_ORIGIN
+        value: "*"
+      # Render terminates TLS at its own proxy. Without this, every request
+      # appears to come from that proxy's IP, so rate limiting (once on)
+      # would throttle every user as if they were one client.
+      - key: TRUST_PROXY
+        value: "true"
+      # NODE_ENV=production would normally switch rate limiting ON. This is
+      # a shared development environment the frontend team will hammer while
+      # integrating, so keep it off explicitly rather than by accident.
+      - key: RATE_LIMIT_ENABLED
+        value: "false"
+      # Keeps the aggregated Swagger UI served despite NODE_ENV=production.
+      # Correct here — this IS the integration environment. Never set it on
+      # a real production deployment.
+      - key: ENABLE_DOCS
+        value: "true"
+      # Downstream targets. Render derives a service's URL from its name, so
+      # these match the names below. If Render appended a suffix because a
+      # name was already taken globally, correct these four in the gateway's
+      # Environment tab after the first deploy.
+      - key: COMMERCE_SERVICE_URL
+        value: https://loc-commerce-service.onrender.com
+      - key: LOGISTICS_SERVICE_URL
+        value: https://loc-logistics-service.onrender.com
+      - key: FINANCE_SERVICE_URL
+        value: https://loc-finance-service.onrender.com
+      - key: GROWTH_SERVICE_URL
+        value: https://loc-growth-service.onrender.com
+      # OTP delivery. Left unset, the code writes the OTP to the Render log
+      # instead of sending it — usable as a fallback, but it means the app
+      # team cannot complete a real signup. Paste the values that are
+      # already in gateway-service/.env into the dashboard.
+      - key: TRANSMIT_SMS_API_KEY
+        sync: false
+      - key: TRANSMIT_SMS_API_SECRET
+        sync: false
+      - key: TRANSMIT_SMS_FROM_NUMBER
+        sync: false
+      - key: EMAIL_SERVICE
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      # Social login. Google and Facebook are implemented; Apple deliberately
+      # refuses rather than accepting unverified tokens, so it has no vars.
+      #
+      # GOOGLE_AUTH_CLIENT_ID takes a COMMA-SEPARATED list — Google issues a
+      # separate client id per platform, and a token from a platform whose id
+      # is missing is rejected as "issued for a different application".
+      - key: GOOGLE_AUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_AUTH_CLIENT_SECRET
+        sync: false
+      - key: FACEBOOK_AUTH_APP_ID
+        sync: false
+      - key: FACEBOOK_AUTH_APP_SECRET
+        sync: false
+
+  # ---------------------------------------------------------------------
+  # Downstream services. Not meant to be called directly: every route but
+  # /health rejects requests without INTERNAL_SERVICE_SECRET.
+  #
+  # buildFilter stops each one rebuilding when an unrelated service changes,
+  # which matters because the free tier meters build minutes across all of
+  # them. The gateway has no filter on purpose — its Swagger spec aggregates
+  # all four services' source, so it must rebuild whenever any of them move.
+  # ---------------------------------------------------------------------
+  - type: web
+    name: loc-commerce-service
+    runtime: node
+    plan: free
+    region: singapore
+    branch: dev
+    rootDir: commerce-service
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - commerce-service/**
+    envVars:
+      - fromGroup: loc-shared
+      - key: NODE_ENV
+        value: production
+      - key: DB_SCHEMA
+        value: commerce
+      - key: CACHE_NAMESPACE
+        value: commerce
+      - key: CORS_ORIGIN
+        value: https://loc-gateway-service.onrender.com
+      - key: TRUST_PROXY
+        value: "true"
+      - key: RATE_LIMIT_ENABLED
+        value: "false"
+
+  - type: web
+    name: loc-logistics-service
+    runtime: node
+    plan: free
+    region: singapore
+    branch: dev
+    rootDir: logistics-service
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - logistics-service/**
+    envVars:
+      - fromGroup: loc-shared
+      - key: NODE_ENV
+        value: production
+      - key: DB_SCHEMA
+        value: logistics
+      - key: CACHE_NAMESPACE
+        value: logistics
+      - key: CORS_ORIGIN
+        value: https://loc-gateway-service.onrender.com
+      - key: TRUST_PROXY
+        value: "true"
+      - key: RATE_LIMIT_ENABLED
+        value: "false"
+
+  - type: web
+    name: loc-finance-service
+    runtime: node
+    plan: free
+    region: singapore
+    branch: dev
+    rootDir: finance-service
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - finance-service/**
+    envVars:
+      - fromGroup: loc-shared
+      - key: NODE_ENV
+        value: production
+      - key: DB_SCHEMA
+        value: finance
+      - key: CACHE_NAMESPACE
+        value: finance
+      - key: CORS_ORIGIN
+        value: https://loc-gateway-service.onrender.com
+      - key: TRUST_PROXY
+        value: "true"
+      - key: RATE_LIMIT_ENABLED
+        value: "false"
+
+  - type: web
+    name: loc-growth-service
+    runtime: node
+    plan: free
+    region: singapore
+    branch: dev
+    rootDir: growth-service
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - growth-service/**
+    envVars:
+      - fromGroup: loc-shared
+      - key: NODE_ENV
+        value: production
+      - key: DB_SCHEMA
+        value: growth
+      - key: CACHE_NAMESPACE
+        value: growth
+      - key: CORS_ORIGIN
+        value: https://loc-gateway-service.onrender.com
+      - key: TRUST_PROXY
+        value: "true"
+      - key: RATE_LIMIT_ENABLED
+        value: "false"

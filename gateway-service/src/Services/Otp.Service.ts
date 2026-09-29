@@ -1,36 +1,25 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { OtpChallengeQuery } from "../Queries/OtpChallenge.Query.js";
-import { OtpChallengeModel } from "../Models/OtpChallenge/OtpChallenge.Model.js";
-import { OtpPurpose } from "../Models/OtpChallenge/OtpChallenge.Interface.js";
+import { IOtpChallenge, OtpPurpose } from "../Models/OtpChallenge/OtpChallenge.Interface.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { badRequest, tooManyRequests } from "../../commons/Utils/StatusCode.js";
 
 const OTP_LENGTH = 6;
 const OTP_TTL_SECONDS = 5 * 60;
-/**
- * How long a *verified* challenge stays usable, so the user can finish the
- * rest of the form (email, password) after proving their phone. The 5-minute
- * code lifetime is the security-relevant one; this window only governs how
- * long the proof stays good, and the challenge is still single-use.
- */
+// How long a verified challenge stays usable while the user finishes the rest
+// of the form. The 5-minute code lifetime is the security-relevant one.
 const POST_VERIFY_WINDOW_SECONDS = 15 * 60;
 const MAX_VERIFY_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SECONDS = 30;
 /** Per destination, per hour — the guard against running up an SMS bill. */
 const MAX_CHALLENGES_PER_HOUR = 5;
-/**
- * Lower than the password cost (12) on purpose. A 6-digit code lives 5
- * minutes and dies after 5 guesses, so its threat model is nothing like a
- * password's, and cost 12 would add ~300ms to every verify for no real gain.
- */
+// Lower than the password cost (12): a 6-digit code lives 5 minutes and dies
+// after 5 guesses, so cost 12 would add ~300ms per verify for no real gain.
 const OTP_HASH_ROUNDS = 8;
 
-/**
- * crypto.randomInt, not Math.random: Math.random is not a CSPRNG and its
- * output is predictable from prior values, which for an auth code means
- * guessable.
- */
+// crypto.randomInt, not Math.random: the latter is not a CSPRNG and its output
+// is predictable from prior values, which for an auth code means guessable.
 const generateCode = (): string =>
   String(crypto.randomInt(0, 10 ** OTP_LENGTH)).padStart(OTP_LENGTH, "0");
 
@@ -40,10 +29,8 @@ export interface OtpChallengeResponse {
   resendAvailableInSeconds: number;
 }
 
-/**
- * Throttles per destination, independently of the IP-based limiter, so
- * someone cycling IPs still can't spam one person's phone.
- */
+// Throttles per destination, independently of the IP limiter, so someone
+// cycling IPs still cannot spam one person's phone.
 const assertCanIssue = async (destination: string, purpose: OtpPurpose): Promise<void> => {
   const latest = await OtpChallengeQuery.findLatestFor(destination, purpose);
   if (latest) {
@@ -96,25 +83,15 @@ const issue = async (input: {
   };
 };
 
-/**
- * Checks the code and marks the challenge verified — it does NOT spend it.
- *
- * Split from consuming because the registration form proves the phone
- * mid-form, while the user still has an email and password left to type.
- * The challenge stays usable (once) until the account is actually created.
- *
- * On a wrong code the response carries `attemptsRemaining` so the UI can
- * show "4 attempts left" and disable the input at zero without parsing a
- * human-readable string.
- */
+// Checks the code and marks the challenge verified — it does NOT spend it,
+// because registration proves the phone mid-form with the rest still to type.
 const verifyCode = async (
   verificationId: string,
   code: string,
   expectedPurpose: OtpPurpose
-): Promise<OtpChallengeModel> => {
-  // Every non-attempt failure returns the same message: distinguishing
-  // "wrong code" from "expired" from "no such challenge" tells an attacker
-  // which of those to work on.
+): Promise<IOtpChallenge> => {
+  // One message for every non-attempt failure: distinguishing "wrong code"
+  // from "expired" from "no such challenge" tells an attacker what to work on.
   const invalid = (attemptsRemaining?: number) =>
     new CustomException(
       "That code is invalid or has expired.",
@@ -152,21 +129,14 @@ const verifyCode = async (
   return challenge;
 };
 
-/**
- * Loads a challenge that was already verified, for the step that finally
- * acts on it (creating the account). Re-reads from the database rather than
- * trusting anything the client passes back, and burns the challenge so the
- * same proof can't create two accounts.
- */
+// Loads an already-verified challenge and burns it. Re-read from the database
+// rather than trusted from the client, so one proof cannot create two accounts.
 const consumeVerified = async (
   verificationId: string,
   expectedPurpose: OtpPurpose
-): Promise<OtpChallengeModel> => {
+): Promise<IOtpChallenge> => {
   const notVerified = () =>
-    new CustomException(
-      "Verify your phone number before continuing.",
-      badRequest
-    );
+    new CustomException("Verify your phone number before continuing.", badRequest);
 
   if (!verificationId) throw notVerified();
 
@@ -177,10 +147,7 @@ const consumeVerified = async (
   // Already used to create an account — a second attempt must not work.
   if (challenge.consumedAt) throw notVerified();
   if (challenge.expiresAt.getTime() < Date.now()) {
-    throw new CustomException(
-      "Your verification expired. Please request a new code.",
-      badRequest
-    );
+    throw new CustomException("Your verification expired. Please request a new code.", badRequest);
   }
 
   await OtpChallengeQuery.markConsumed(verificationId);

@@ -276,6 +276,7 @@ const registerComplete = async (req: Request, res: Response) => {
 const loginOtpRequest = async (req: Request, res: Response) => {
   try {
     const result = await AuthService.loginOtpRequest(req.body?.phoneNumber);
+    console.log("loginOtpRequest result:", result); 
     return handleSuccessResponse(
       { statusCode: successCode, result },
       res,
@@ -343,16 +344,22 @@ const loginOtpVerify = async (req: Request, res: Response) => {
  *
  *       The identity is read out of the **verified** token — a client-supplied email or name
  *       is never trusted, since that would let anyone sign in as any address. The token's
- *       audience is checked against this server's own client id, so a validly-signed token
+ *       audience is checked against this server's own client ids, so a validly-signed token
  *       issued to a different app is rejected.
  *
  *       Matching is by the provider's stable user id first, then by verified email (so an
  *       existing password account is linked rather than duplicated). A brand-new account has
  *       no phone number — `profileComplete` is false until one is added and verified.
  *
- *       **Configuration status:** Google needs `GOOGLE_AUTH_CLIENT_ID`; Facebook needs
- *       `FACEBOOK_APP_ID` + `FACEBOOK_APP_SECRET`; both return 500 until set.
- *       **Apple is not implemented** and always returns 500.
+ *       **Google and Facebook are implemented.** Google needs `GOOGLE_AUTH_CLIENT_ID`, which
+ *       accepts a comma-separated list — Google issues a separate client id per platform, so
+ *       the web, Android and iOS ids must all be listed or tokens from the missing platforms
+ *       come back 401 as "issued for a different application". Facebook needs
+ *       `FACEBOOK_AUTH_APP_ID` + `FACEBOOK_AUTH_APP_SECRET` (one app across all platforms).
+ *       Either returns 500 until configured.
+ *
+ *       **Apple is not implemented** and always returns 500 — it refuses rather than
+ *       accepting a token it cannot verify.
  *     tags: [Auth - Login]
  *     requestBody:
  *       required: true

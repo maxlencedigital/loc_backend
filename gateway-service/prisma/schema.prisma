@@ -1,0 +1,151 @@
+// Gateway service data model.
+//
+// This service owns identity: user accounts, the OTP challenges that prove a
+// phone or email belongs to someone, and the audit trail. No other service
+// reads these tables — they live in their own Postgres schema (DB_SCHEMA),
+// which is what keeps that boundary real rather than a convention.
+//
+// Column names are camelCase on purpose. They match the names the previous
+// Sequelize models produced, so an existing dev database keeps working and
+// nothing in the service layer had to be renamed alongside the ORM swap.
+
+generator client {
+  provider = "prisma-client-js"
+  // No binaryTargets needed: with a driver adapter (see
+  // src/DB/Prisma.Connection.Db.ts) Prisma 7 runs a WASM query compiler and
+  // talks to Postgres through node-postgres, so there is no native engine
+  // binary to match against the container's libc.
+}
+
+datasource db {
+  provider = "postgresql"
+  // No url here on purpose: Prisma 7 moved connection strings out of the
+  // schema. The CLI reads its URL from prisma.config.ts, and the running
+  // server passes its own through a driver adapter — see
+  // src/DB/Prisma.Connection.Db.ts.
+}
+
+enum UserRole {
+  super_admin
+  admin
+  staff
+  driver
+  customer
+}
+
+enum OAuthProvider {
+  google
+  facebook
+  apple
+}
+
+enum OtpPurpose {
+  register
+  login
+  password_reset
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+
+  name  String @db.VarChar(100)
+  email String @unique @db.VarChar(150)
+
+  /// Nullable because a social-login account has no password at all. Storing
+  /// "" for "no password" would be dangerous — an empty string is still a
+  /// hashable value, and any path that forgot to special-case it could be
+  /// tricked into authenticating against it.
+  passwordHash String? @db.VarChar(255)
+
+  /// Nullable because no OAuth provider guarantees a phone number. Still
+  /// unique: Postgres permits many NULLs in a unique index, so unverified
+  /// social accounts do not collide with each other.
+  phoneNumber String? @unique @db.VarChar(20)
+
+  /// Only ever set by completing an OTP challenge. A number typed into a
+  /// registration form is a claim, not a verified fact.
+  isPhoneVerified Boolean @default(false)
+
+  oauthProvider OAuthProvider?
+
+  /// The provider's own stable user id ("sub"). Matched on in preference to
+  /// email, because a provider account's email can change while `sub` cannot.
+  oauthSubject String? @db.VarChar(255)
+
+  role     UserRole @default(customer)
+  isActive Boolean  @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  /// One account per provider identity. Without this, two concurrent
+  /// first-time social logins could both create an account for the same
+  /// Google user.
+  @@unique([oauthProvider, oauthSubject], name: "oauthIdentity", map: "uniq_oauth_identity")
+  @@map("gateway_users")
+}
+
+model OtpChallenge {
+  /// Handed to the client as `verificationId`. Opaque; not the OTP itself.
+  id String @id @default(uuid()) @db.Uuid
+
+  purpose OtpPurpose
+
+  /// Phone number or email the code was sent to, depending on purpose. For
+  /// registration this is the authoritative phone number — it is read back
+  /// from here when the account is finally created, never re-accepted from
+  /// the client, so the number that was proven is the number that gets saved.
+  destination String @db.VarChar(150)
+
+  /// bcrypt hash of the code. A 6-digit OTP in plaintext would be directly
+  /// usable by anyone who could read the table — a backup, a log, a dump.
+  otpHash String @db.VarChar(255)
+
+  /// Set for `login` / `password_reset` once the account is resolved.
+  /// Intentionally not a foreign key: a `register` challenge exists before
+  /// any user does, and a reset challenge must survive the account being
+  /// deleted mid-flow rather than cascading away underneath it.
+  userId String? @db.Uuid
+
+  attempts Int @default(0)
+
+  /// Stamped when the correct code is entered. Separate from `consumedAt`
+  /// because the registration form verifies the phone mid-form — the user
+  /// still has to type an email and password before the account is created,
+  /// so there is a real gap between "this number is proven" and "this
+  /// challenge has been used up".
+  verifiedAt DateTime? @db.Timestamptz(6)
+
+  /// Stamped when the challenge is finally spent. Once set, it can never be
+  /// used again.
+  consumedAt DateTime? @db.Timestamptz(6)
+
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  /// Supports the per-destination resend throttle, which counts recent
+  /// challenges for one phone or email.
+  @@index([destination, purpose], map: "idx_destination_purpose")
+  /// Supports the expiry sweep.
+  @@index([expiresAt], map: "idx_expires_at")
+  @@map("otp_challenges")
+}
+
+model ActivityLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  service    String  @db.VarChar(50)
+  method     String  @db.VarChar(10)
+  path       String  @db.VarChar(255)
+  userId     String? @db.Uuid
+  statusCode Int
+  ip         String? @db.VarChar(45)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  /// The audit search always orders by createdAt DESC and pages through the
+  /// result. Without this index that ordering is a full sort of the whole
+  /// table, which gets slower every day the service stays up.
+  @@index([createdAt], map: "idx_activity_created_at")
+  @@map("activity_logs")
+}

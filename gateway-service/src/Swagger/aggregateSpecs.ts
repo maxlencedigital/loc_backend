@@ -12,12 +12,8 @@ interface DownstreamServiceConfig {
   sourceDir: string; // absolute path to that service's own folder
 }
 
-/**
- * These 4 services are siblings of gateway-service under Backend/.
- * Their route JSDoc comments are parsed straight off disk — they run
- * no Swagger UI of their own, so this is the only place their API
- * surface gets documented.
- */
+// The 4 sibling services under Backend/. Their route JSDoc is parsed off disk:
+// they run no Swagger UI, so this is the only place they get documented.
 const buildDownstreamConfigs = (backendRoot: string): DownstreamServiceConfig[] => [
   {
     key: "commerce",
@@ -47,12 +43,8 @@ const buildDownstreamConfigs = (backendRoot: string): DownstreamServiceConfig[] 
 
 const SUCCESS_CODES = new Set(["200", "201", "202", "204"]);
 
-/**
- * Every documented operation gets the same envelope shown for its
- * responses — matching commons/Response/Response.ts exactly — so app
- * and website teams see one consistent contract everywhere, not a
- * different ad-hoc shape per endpoint.
- */
+// Every operation shows the same response envelope as Response.ts, so clients
+// see one consistent contract rather than an ad-hoc shape per endpoint.
 const applyStandardEnvelope = (paths: Record<string, any>) => {
   for (const pathKey of Object.keys(paths)) {
     for (const method of Object.keys(paths[pathKey])) {
@@ -69,9 +61,8 @@ const applyStandardEnvelope = (paths: Record<string, any>) => {
           "application/json": { schema: { $ref: schemaRef } },
         };
       }
-      // Every authenticated route can fail these two ways even if the
-      // handler's own JSDoc didn't think to list them — document them
-      // once, here, instead of repeating it in every controller.
+      // Every authenticated route can fail these two ways, so document them
+      // once here rather than repeating it in every controller.
       if (operation.security && !operation.responses["401"]) {
         operation.responses["401"] = {
           description: "Missing or invalid Bearer token.",
@@ -88,14 +79,8 @@ const applyStandardEnvelope = (paths: Record<string, any>) => {
   }
 };
 
-/**
- * Builds ONE OpenAPI document covering every service — the gateway's
- * own auth/audit/health routes plus commerce/logistics/finance/growth,
- * with paths rewritten exactly as a client calls them (through the
- * gateway, e.g. "/commerce/health", never the service's own root).
- * This is deliberately the only Swagger UI in the whole system: app
- * and website teams integrate against one contract, not five.
- */
+// Builds ONE OpenAPI document covering all 5 services, with paths rewritten as
+// a client calls them ("/commerce/health"), never the service's own root.
 export const buildAggregatedSpec = (gatewaySpec: any, backendRoot: string) => {
   const combinedPaths: Record<string, any> = { ...gatewaySpec.paths };
 

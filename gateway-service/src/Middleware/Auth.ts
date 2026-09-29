@@ -9,12 +9,8 @@ export interface AuthenticatedRequest extends Request {
   user?: { id: string; role: UserRole };
 }
 
-/**
- * Every request is authenticated exactly once, here, at the
- * gateway. Downstream services (commerce/logistics/finance/growth)
- * trust the x-user-id / x-user-role headers this middleware's
- * proxy attaches afterwards — they do not re-verify the JWT.
- */
+// Every request is authenticated exactly once, here. Downstream services trust
+// the x-user-id / x-user-role headers the proxy attaches and never re-verify.
 const verifyToken = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.header("Authorization");
@@ -33,12 +29,8 @@ const verifyToken = (req: AuthenticatedRequest, res: Response, next: NextFunctio
   }
 };
 
-/**
- * `super_admin` always passes, regardless of which roles are listed —
- * it sits above the rest of the hierarchy (currently just admin, with
- * staff/driver/customer below that; more tiers can slot in between
- * later without touching every requireRole(...) call site).
- */
+// `super_admin` always passes, whichever roles are listed — it sits above the
+// rest of the hierarchy, so new tiers can slot in without touching call sites.
 const requireRole = (...roles: UserRole[]) => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {

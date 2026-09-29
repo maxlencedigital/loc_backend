@@ -11,11 +11,8 @@ const router = express.Router();
 
 router.get("/health", HealthController.check);
 
-// POS and Store Management routes below are contract-only scaffolds
-// (Phase 1 API-first pass): real routes, full Swagger docs, trivial
-// request validation, but every handler returns 501 via
-// handleNotImplementedResponse until the actual service logic — models,
-// queries, business rules — is built out module by module.
+// Contract-only scaffolds: real routes and full Swagger docs, but every handler
+// returns 501 until the service logic is built out module by module.
 router.use(orderRoutes);
 router.use(customerRoutes);
 router.use(catalogRoutes);

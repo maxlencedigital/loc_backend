@@ -21,6 +21,12 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY gateway-service/package.json gateway-service/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
+# The generated Prisma client. `npm ci --omit=dev` above installs
+# @prisma/client but NOT the code generated into it — the prisma CLI is a
+# devDependency and its postinstall hook is blocked, so without this copy
+# every query fails at runtime with "did you forget to run prisma generate".
+COPY --from=build /repo/gateway-service/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /repo/gateway-service/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build /repo/gateway-service/dist ./dist
 COPY --from=build /repo/gateway-service/openapi.generated.json ./openapi.generated.json
 USER node

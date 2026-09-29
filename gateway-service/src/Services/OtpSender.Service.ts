@@ -2,20 +2,8 @@ import nodemailer, { Transporter } from "nodemailer";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { serviceUnavailable } from "../../commons/Utils/StatusCode.js";
 
-/**
- * Where OTPs actually go.
- *
- * Providers match the Tecnogex backend so one set of credentials covers both:
- *   SMS   — TransmitSMS (https://transmitsms.com), HTTP Basic auth
- *   Email — SMTP via nodemailer
- *
- * Both are optional. With their credentials unset the code is written to the
- * server log instead, which keeps every flow testable locally without an
- * account or a per-message bill. The code is never returned in an API
- * response, not even in development — an endpoint that hands back its own OTP
- * is not an OTP flow, and that kind of "temporary" convenience is exactly what
- * survives to production.
- */
+// Where OTPs go: TransmitSMS, and SMTP via nodemailer. Both optional — unset
+// credentials log the code, which is never returned in an API response.
 
 const TRANSMIT_SMS_ENDPOINT = "https://api.transmitsms.com/send-sms.json";
 
@@ -35,8 +23,8 @@ const digitsOnly = (value: string) => (value || "").replace(/[^\d]/g, "");
 const logToConsole = (channel: "sms" | "email", to: string, code: string) => {
   console.log(`[OTP][${channel}] to=${to} code=${code}`);
   if (process.env.NODE_ENV === "production") {
-    // Loud, because in production this means codes are reaching nobody and
-    // every dependent flow is silently broken for real users.
+    // Loud: in production this means codes reach nobody and every dependent
+    // flow is silently broken for real users.
     console.error(
       `[OTP] No ${channel} provider configured while NODE_ENV=production — ` +
         `the code was NOT delivered.`
@@ -69,7 +57,16 @@ const sendSms = async (to: string, code: string): Promise<void> => {
       },
       body,
     });
-    const data = (await response.json()) as { error?: { code?: string; description?: string } };
+
+    // Read the body ONCE. A response body is a stream: calling .text() and then
+    // .json() on the same response throws, which would fail every send.
+    const raw = await response.text();
+    let data: { error?: { code?: string; description?: string } };
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(`non-JSON provider response (HTTP ${response.status}): ${raw.slice(0, 200)}`);
+    }
 
     // TransmitSMS answers 200 even for rejected sends; the verdict is in the
     // body, so checking response.ok alone would treat failures as successes.
@@ -85,10 +82,8 @@ const sendSms = async (to: string, code: string): Promise<void> => {
   }
 };
 
-/**
- * Built once and reused. Creating a transporter per message reopens an SMTP
- * connection every time, which is slow and gets throttled by most providers.
- */
+// Built once and reused: a transporter per message reopens an SMTP connection
+// every time, which is slow and gets throttled by most providers.
 let transporter: Transporter | null = null;
 const getTransporter = (): Transporter => {
   if (!transporter) {

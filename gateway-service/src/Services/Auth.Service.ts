@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { UserQuery } from "../Queries/User.Query.js";
 import { OtpService } from "./Otp.Service.js";
 import { OtpChallengeQuery } from "../Queries/OtpChallenge.Query.js";
+import { isUniqueViolation } from "../Queries/DatabaseError.js";
 import { OtpSender } from "./OtpSender.Service.js";
 import { OAuthService } from "./OAuth.Service.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
@@ -13,22 +14,16 @@ import { UserRole, OAuthProvider } from "../Models/User/User.Interface.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
-// OWASP's current bcrypt guidance (2023+) is a work factor of 10-12;
-// 12 is the safer default for a new project and still well within
-// acceptable per-login latency.
+// OWASP guidance is a work factor of 10-12; 12 is the safer default and still
+// within acceptable per-login latency.
 const SALT_ROUNDS = 12;
 
-// Pinned explicitly on both sign and verify — never left to the
-// library's default inference — so a future dependency change can't
-// silently widen what's accepted (the classic JWT "alg confusion"
-// class of bug starts with an unconstrained verify).
+// Pinned on both sign and verify, never left to the library's inference: an
+// unconstrained verify is where JWT "alg confusion" bugs start.
 const JWT_ALGORITHM = "HS256";
 
-/**
- * No hardcoded fallback secret — a service without JWT_SECRET
- * set must fail loudly, not silently sign tokens with a value
- * that's sitting in source control.
- */
+// No fallback secret: a service without JWT_SECRET must fail loudly, not sign
+// tokens with a value sitting in source control.
 const getJwtSecret = (): string => {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -84,27 +79,21 @@ const createUserRecord = async (input: {
       isActive: true,
     });
     return { id: user.id, email: user.email, role: user.role };
-  } catch (error: any) {
-    // Two concurrent registrations for the same email can both pass the
-    // findByEmail check above; the DB's unique constraint is the real
-    // guard, so translate its rejection into the same 409 instead of a
-    // generic 500.
-    if (error?.name === "SequelizeUniqueConstraintError") {
+  } catch (error: unknown) {
+    // Two concurrent registrations can both pass the findByEmail check above,
+    // so the unique constraint is the real guard — report it as the same 409.
+    if (isUniqueViolation(error, "email")) {
       throw new CustomException("An account with this email already exists.", conflict);
+    }
+    if (isUniqueViolation(error, "phoneNumber")) {
+      throw new CustomException("An account with this phone number already exists.", conflict);
     }
     throw error;
   }
 };
 
-/**
- * Public self-registration input. There is deliberately no `role` field:
- * every self-registered account is a "customer". Elevated roles
- * (admin/staff/driver) must be granted separately by an already-authenticated
- * super_admin — never accepted from an anonymous request body, or any caller
- * could register as `role: "admin"` and inherit full access system-wide
- * (every downstream service trusts the gateway-issued x-user-role header
- * as-is).
- */
+// No `role` field on purpose: every self-registered account is a customer.
+// Accepting one would let anyone register as "admin" and inherit full access.
 const register = async (input: {
   name: string;
   email: string;
@@ -117,13 +106,8 @@ const register = async (input: {
 
 const PRIVILEGED_ROLES_CREATABLE_VIA_API: UserRole[] = ["admin", "staff", "driver"];
 
-/**
- * super_admin-only: create an admin/staff/driver account. Deliberately
- * cannot create another super_admin — that tier is seeded only via
- * scripts/seed-super-admin.mjs, which requires direct DB/deploy access,
- * not just an API token. Keeps "who can mint the top of the hierarchy"
- * a strictly higher bar than "who can call an authenticated endpoint".
- */
+// super_admin-only. Cannot create another super_admin: that tier is seeded
+// only by a script needing deploy access, not just an API token.
 const createPrivilegedUser = async (input: {
   name: string;
   email: string;
@@ -146,9 +130,8 @@ const login = async (email: string, password: string) => {
     throw new CustomException("Email and password are required.", badRequest);
   }
   const user = await UserQuery.findByEmail(email);
-  // `!user.passwordHash` covers social-login accounts, which have no password
-  // at all. Without it, bcrypt.compare against null would throw a 500 and,
-  // worse, the shape of that failure would reveal that the account exists.
+  // Covers social-login accounts, which have no password: bcrypt.compare
+  // against null would throw a 500 that reveals the account exists.
   if (!user || !user.isActive || !user.passwordHash) {
     throw new CustomException("Invalid email or password.", unauthorized);
   }
@@ -177,9 +160,7 @@ const verifyToken = (token: string): { userId: string; role: UserRole } => {
   }
 };
 
-// --------------------------------------------------------------------------
-// Shared helpers for the OTP / OAuth flows below
-// --------------------------------------------------------------------------
+// ---------------- Shared helpers for the OTP / OAuth flows ----------------
 
 const issueTokenFor = (user: {
   id: string;
@@ -204,15 +185,9 @@ const issueTokenFor = (user: {
   };
 };
 
-// --------------------------------------------------------------------------
-// Registration with phone verified by OTP  (3 steps)
-//
-// Mirrors the actual sign-up form, where the number is proven mid-form: the
-// user types a name and mobile, taps send, enters the code and sees it
-// validated inline, and only then fills in email and password before
-// submitting. So the OTP is verified on its own, before the rest of the
-// details exist — not as the final submit.
-// --------------------------------------------------------------------------
+// ---------- Registration with phone verified by OTP (3 steps) ----------
+// Mirrors the sign-up form: the number is proven mid-form, before the email
+// and password exist — the OTP is not verified at final submit.
 
 /**
  * Step 1 — send a code to the phone. Takes only the number, because that is
@@ -238,13 +213,8 @@ const registerSendOtp = async (phoneNumber: string) => {
   return challenge;
 };
 
-/**
- * Step 2 — check the code. Proves the number and nothing more: no account is
- * created, because the form hasn't collected an email or password yet.
- *
- * A wrong code comes back with `attemptsRemaining` so the form can show
- * "4 attempts left" and disable the input at zero.
- */
+// Step 2 — check the code. Proves the number and nothing more; no account yet.
+// A wrong code returns `attemptsRemaining` so the form can count down.
 const registerVerifyOtp = async (verificationId: string, otp: string) => {
   const challenge = await OtpService.verifyCode(verificationId, otp, "register");
   return {
@@ -255,13 +225,8 @@ const registerVerifyOtp = async (verificationId: string, otp: string) => {
   };
 };
 
-/**
- * Step 3 — create the account, once the form is complete.
- *
- * The phone number is read back off the verified challenge, never taken from
- * this request: otherwise a caller could verify a number they own and then
- * register someone else's.
- */
+// Step 3 — create the account. The phone number is read off the verified
+// challenge: otherwise a caller could verify one number and register another.
 const registerComplete = async (input: {
   verificationId: string;
   name: string;
@@ -291,31 +256,39 @@ const registerComplete = async (input: {
 
   const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
 
-  const user = await UserQuery.create({
-    name: input.name.trim(),
-    email,
-    phoneNumber,
-    passwordHash,
-    // The point of the whole flow: this number was proven, so record it.
-    isPhoneVerified: true,
-    oauthProvider: null,
-    oauthSubject: null,
-    role: "customer",
-    isActive: true,
-  });
+  let user;
+  try {
+    user = await UserQuery.create({
+      name: input.name.trim(),
+      email,
+      phoneNumber,
+      passwordHash,
+      // The point of the whole flow: this number was proven, so record it.
+      isPhoneVerified: true,
+      oauthProvider: null,
+      oauthSubject: null,
+      role: "customer",
+      isActive: true,
+    });
+  } catch (error: unknown) {
+    // The re-checks above narrow the race but cannot close it, so report the
+    // constraint's rejection as the same 409 rather than a 500 at final submit.
+    if (isUniqueViolation(error, "email")) {
+      throw new CustomException("An account with this email already exists.", conflict);
+    }
+    if (isUniqueViolation(error, "phoneNumber")) {
+      throw new CustomException("An account with this phone number already exists.", conflict);
+    }
+    throw error;
+  }
 
   return issueTokenFor(user);
 };
 
-// --------------------------------------------------------------------------
-// Login by phone + OTP  (2 steps)
-// --------------------------------------------------------------------------
+// -------------------- Login by phone + OTP (2 steps) --------------------
 
-/**
- * Always reports success, whether or not the number belongs to an account —
- * a 404 here would turn this endpoint into a way to test which phone numbers
- * are registered. A code is only actually sent when there's an account.
- */
+// Always reports success: a 404 would turn this into a way to test which
+// numbers are registered. A code is only sent when an account exists.
 const loginOtpRequest = async (phoneNumber: string) => {
   if (!phoneNumber?.trim()) {
     throw new CustomException("A phone number is required.", badRequest);
@@ -337,10 +310,8 @@ const loginOtpRequest = async (phoneNumber: string) => {
     destination: normalised,
     userId: user.id,
   });
-  // Swallowed deliberately. This endpoint returns success even for an
-  // unknown number, so letting a provider outage surface as an error here
-  // would make known accounts fail while unknown ones succeed — an account
-  // enumeration oracle that only appears during an outage.
+  // Swallowed deliberately: a provider outage surfacing here would make known
+  // accounts fail while unknown ones succeed — an enumeration oracle.
   await OtpSender.sendSms(normalised, code).catch((error) =>
     console.error("[OTP] login code delivery failed:", error?.message)
   );
@@ -361,18 +332,10 @@ const loginOtpVerify = async (verificationId: string, otp: string) => {
   return issueTokenFor(user);
 };
 
-// --------------------------------------------------------------------------
-// Social login
-// --------------------------------------------------------------------------
+// ------------------------------ Social login ------------------------------
 
-/**
- * The provider token is verified server-side (see OAuth.Service) and the
- * identity is read out of the verified result — never from the request body.
- *
- * Matching order is deliberate: provider `sub` first (stable), then verified
- * email (so someone who signed up with a password can later use "Continue
- * with Google" and land on the same account rather than a duplicate).
- */
+// The token is verified server-side and the identity read from the result,
+// never the request body. Matched on provider `sub` first, then verified email.
 const loginOAuth = async (provider: OAuthProvider, token: string) => {
   const identity = await OAuthService.verify(provider, token);
 
@@ -382,9 +345,8 @@ const loginOAuth = async (provider: OAuthProvider, token: string) => {
   if (!user) {
     const byEmail = await UserQuery.findByEmail(identity.email);
     if (byEmail) {
-      // Only link on a provider-verified email. Linking on an unverified one
-      // would let someone register a provider account claiming a victim's
-      // address and inherit their account.
+      // Only link on a provider-VERIFIED email: otherwise someone could claim a
+      // victim's address at the provider and inherit their account.
       if (!identity.emailVerified) {
         throw new CustomException(
           "That provider account's email is not verified, so it can't be linked to an existing account.",
@@ -423,9 +385,7 @@ const loginOAuth = async (provider: OAuthProvider, token: string) => {
   };
 };
 
-// --------------------------------------------------------------------------
-// Forgotten password, by email OTP  (2 steps)
-// --------------------------------------------------------------------------
+// ---------------- Forgotten password, by email OTP (2 steps) ----------------
 
 /** Always reports success — same anti-enumeration reasoning as login-by-OTP. */
 const passwordForgot = async (email: string) => {
@@ -482,11 +442,8 @@ const passwordReset = async (verificationId: string, otp: string, newPassword: s
   const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
   await UserQuery.setPassword(user.id, passwordHash);
 
-  // NOTE: existing sessions are not revoked, because these JWTs are stateless
-  // and nothing tracks issued tokens yet — so a token stolen before the reset
-  // stays valid until it expires (12h). Closing that properly needs a token
-  // version/denylist on the user row, checked at verify time. Documented on
-  // the endpoint rather than quietly left as a surprise.
+  // Existing sessions are NOT revoked: these JWTs are stateless, so a token
+  // stolen before the reset stays valid for up to 12h. Needs a token version.
   return { message: "Password updated. Please sign in with your new password." };
 };
 

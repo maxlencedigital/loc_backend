@@ -7,27 +7,24 @@ export interface IUser {
   name: string;
   email: string;
   /**
-   * Nullable because a social-login account has no password at all. Treating
-   * "" as "no password" instead would be dangerous — an empty string is still
-   * a hashable value, and any code path that forgot to special-case it could
-   * be tricked into authenticating against it.
+   * Nullable because a social-login account has no password. Storing "" would
+   * be dangerous: an empty string is still hashable and could be matched on.
    */
   passwordHash: string | null;
   /**
    * Nullable because no OAuth provider guarantees a phone number. Still
-   * unique: MySQL permits many NULLs in a unique index, so unverified
-   * social accounts don't collide with each other.
+   * unique — Postgres permits many NULLs in a unique index.
    */
   phoneNumber: string | null;
   /**
-   * Only ever set by completing an OTP challenge. A number typed into a
-   * registration form is a claim, not a verified fact.
+   * Only ever set by completing an OTP challenge. A number typed into a form
+   * is a claim, not a verified fact.
    */
   isPhoneVerified: boolean;
   oauthProvider: OAuthProvider | null;
   /**
-   * The provider's own stable user id ("sub"). Matched on in preference to
-   * email, because a provider account's email can change while `sub` cannot.
+   * The provider's stable user id ("sub"). Matched in preference to email,
+   * which a user can change while `sub` stays fixed.
    */
   oauthSubject: string | null;
   role: UserRole;

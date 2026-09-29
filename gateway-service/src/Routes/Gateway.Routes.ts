@@ -14,19 +14,16 @@ const router = express.Router();
 
 router.get("/health", HealthController.check);
 
-// --------------------------- Auth ---------------------------
-// authLimiter is deliberately far tighter than the general API rate
-// limit — a login/register endpoint is a brute-force target the rest
-// of the API isn't.
+// --------------------------------- Auth ---------------------------------
+
+// authLimiter is far tighter than the general API limit: a login endpoint is a
+// brute-force target the rest of the API is not.
 router.post("/auth/register", authLimiter, AuthController.register);
 router.post("/auth/login", authLimiter, AuthController.login);
 router.post("/auth/refresh", authLimiter, AuthController.refresh);
 
-// Customer-facing auth: phone-OTP registration, phone-OTP login, social
-// login, and password reset. All behind authLimiter for the same reason as
-// the routes above — these are the brute-force surface. The OTP flows are
-// additionally throttled per phone/email inside Otp.Service, so cycling IPs
-// can't be used to spam one person's number or run up the SMS bill.
+// Customer-facing auth. OTP flows are additionally throttled per phone/email
+// inside Otp.Service, so cycling IPs cannot spam one number or the SMS bill.
 router.post("/auth/register/send-otp", authLimiter, UserAuthController.registerSendOtp);
 router.post("/auth/register/verify-otp", authLimiter, UserAuthController.registerVerifyOtp);
 router.post("/auth/register/complete", authLimiter, UserAuthController.registerComplete);
@@ -81,9 +78,8 @@ router.post(
   NotificationController.send
 );
 
-// --------------- Routing to the module services ----------------
-// Every request below is authenticated once, here, before it
-// ever reaches commerce/logistics/finance/growth.
+// --------------------- Routing to the module services ---------------------
+// Every request below is authenticated once, here, before it reaches a service.
 router.use(
   "/commerce",
   verifyToken,

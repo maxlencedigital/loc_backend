@@ -2,11 +2,8 @@ import { Response, NextFunction } from "express";
 import { ActivityLogQuery } from "../Queries/ActivityLog.Query.js";
 import { AuthenticatedRequest } from "./Auth.js";
 
-/**
- * Writes one audit row per request, after the response is sent,
- * so logging never adds latency to the actual request. This is
- * the Security module's activity log, folded into the gateway.
- */
+// One audit row per request, written after the response is sent so logging
+// never adds latency. This is the Security module's activity log.
 const activityLogger = (serviceName: string) => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     res.on("finish", () => {

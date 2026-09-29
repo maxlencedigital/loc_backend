@@ -2,9 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # dev included because that is the branch Render deploys from — without
+    # it, a broken commit would reach the deployed environment before any
+    # check had run against it.
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch: {}
 
 concurrency:

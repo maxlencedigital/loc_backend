@@ -1,9 +1,8 @@
 import bcrypt from "bcrypt";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 
-// Factory-mocked so this test never loads the real Query -> Model ->
-// Sequelize.Connection.Db.js chain, which would otherwise require
-// DB_* env vars just to import.
+// Factory-mocked so this test never loads the real Query -> Prisma client
+// chain, which would otherwise need DATABASE_URL just to import.
 jest.mock("../Queries/User.Query.js", () => ({
   UserQuery: {
     create: jest.fn(),
@@ -16,9 +15,8 @@ jest.mock("../Queries/User.Query.js", () => ({
   },
 }));
 
-// Auth.Service now reaches the OTP flows, which import the OtpChallenge model
-// and therefore Sequelize.Connection.Db — which throws at import time without
-// DB_* env vars. Mocking the Query keeps that chain out of this unit test.
+// Auth.Service also reaches the OTP flows, which go through the Prisma client;
+// mocking the Query keeps that chain out of this unit test.
 jest.mock("../Queries/OtpChallenge.Query.js", () => ({
   OtpChallengeQuery: {
     create: jest.fn(),
@@ -111,9 +109,46 @@ describe("AuthService.register", () => {
     expect(mockedUserQuery.create).not.toHaveBeenCalled();
   });
 
-  it("maps a concurrent duplicate-email race (DB unique constraint) to a CustomException", async () => {
+  it("maps a concurrent duplicate-email race (DB unique constraint) to a 409", async () => {
     mockedUserQuery.findByEmail.mockResolvedValue(null);
-    mockedUserQuery.create.mockRejectedValue({ name: "SequelizeUniqueConstraintError" });
+    // Asserted against Prisma's real error shape: the previous version matched
+    // an ORM-specific string and kept passing after the code stopped working.
+    mockedUserQuery.create.mockRejectedValue({ code: "P2002", meta: { target: ["email"] } });
+
+    // Caught rather than matched: Jest compares thrown Errors by message, so
+    // toMatchObject on errorCode would pass vacuously.
+    const error = await AuthService.register({
+      name: "A",
+      email: "a@x.com",
+      phoneNumber: "1",
+      password: "plaintext-pw",
+    }).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(CustomException);
+    expect(error.errorCode).toBe(409);
+    expect(error.displayMessage).toContain("email");
+  });
+
+  it("reports the phone number, not the email, when the phone number is what clashed", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    mockedUserQuery.create.mockRejectedValue({ code: "P2002", meta: { target: ["phoneNumber"] } });
+
+    const error = await AuthService.register({
+      name: "A",
+      email: "a@x.com",
+      phoneNumber: "1",
+      password: "plaintext-pw",
+    }).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(CustomException);
+    expect(error.errorCode).toBe(409);
+    expect(error.displayMessage).toContain("phone number");
+  });
+
+  it("does not swallow a database error that is not a unique violation", async () => {
+    mockedUserQuery.findByEmail.mockResolvedValue(null);
+    const outage = Object.assign(new Error("connection terminated"), { code: "P1001" });
+    mockedUserQuery.create.mockRejectedValue(outage);
 
     await expect(
       AuthService.register({
@@ -122,7 +157,7 @@ describe("AuthService.register", () => {
         phoneNumber: "1",
         password: "plaintext-pw",
       })
-    ).rejects.toThrow(CustomException);
+    ).rejects.toBe(outage);
   });
 
   it("creates the user with a hashed (never plaintext) password", async () => {

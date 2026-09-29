@@ -1,28 +1,43 @@
-# Local dev environment shared by all 5 services — one MySQL server,
-# one database per service (see mysql-init/001-create-databases.sql),
-# plus phpMyAdmin/Adminer for browsing it. Mirrors the tecnogex_new_backend
-# dev compose pattern. Ports are offset from Tecnogex's (3306/8765/8099)
-# so both projects can run on this machine at the same time.
+# Local dev environment shared by all 5 services.
+#
+# One Postgres server, ONE database, and a schema per service — deliberately
+# the same shape as the hosted environment (a single free-tier Supabase
+# database with DB_SCHEMA per service) rather than the database-per-service
+# layout this used under MySQL. Local and deployed now fail in the same ways,
+# which is the point: a cross-schema query that breaks in production should
+# break on a laptop too.
+#
+# Ports are offset from Tecnogex's (3306/8765/8099) so both projects can run
+# on this machine at the same time.
+#
+# Tables are NOT created by the services at boot. After `docker compose up`,
+# apply migrations once from the host:
+#   for s in gateway commerce logistics finance growth; do \
+#     (cd $s-service && npm run db:migrate); done
 
 networks:
   laundry_network_development:
     driver: bridge
 
 services:
-  mysql-development:
-    container_name: laundry-mysql-development
-    image: mysql:8.0.30
+  postgres-development:
+    container_name: laundry-postgres-development
+    image: postgres:16-alpine
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-laundry_dev_root_pw}
-      MYSQL_DATABASE: gateway_service
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-laundry_dev_root_pw}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: laundry_development
     ports:
-      - '3310:3306'
+      - '5442:5432'
     volumes:
-      - mysql-data-development:/var/lib/mysql
-      - ./mysql-init:/docker-entrypoint-initdb.d
+      - postgres-data-development:/var/lib/postgresql/data
+      # Creates the five schemas up front. Prisma Migrate would create its own
+      # on first run, but having them exist from the start means a service can
+      # connect and report healthy before anyone has run a migration.
+      - ./postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 60s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d laundry_development"]
+      interval: 10s
       timeout: 5s
       retries: 5
     restart: always
@@ -31,7 +46,7 @@ services:
 
   # Shared by all 5 services for caching and for the rate limiter's counters.
   # `appendonly` is deliberately OFF: everything stored here is derived data
-  # that can be rebuilt from MySQL, so paying for disk persistence buys
+  # that can be rebuilt from Postgres, so paying for disk persistence buys
   # nothing — a cold Redis just means a brief spell of cache misses.
   # maxmemory-policy allkeys-lru so it evicts old keys under pressure instead
   # of refusing writes (the default `noeviction` would turn a full cache into
@@ -51,18 +66,23 @@ services:
     networks:
       - laundry_network_development
 
-  phpmyadmin:
-    container_name: laundry-phpmyadmin
-    image: phpmyadmin/phpmyadmin:5.2.1
+  # Replaces phpMyAdmin, which only speaks MySQL. Same role: a browser UI for
+  # poking at the data. Log in with the POSTGRES_* credentials above; the
+  # server host inside pgAdmin is `postgres-development`, not localhost.
+  pgadmin:
+    container_name: laundry-pgadmin
+    image: dpage/pgadmin4:8.12
     environment:
-      PMA_HOST: mysql-development
-      PMA_USER: root
-      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD:-laundry_dev_root_pw}
-      PMA_PORT: 3306
+      # Must be a syntactically real address — pgAdmin validates it and
+      # crash-loops on a `.local` TLD rather than starting with a warning.
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@laundry.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-laundry_dev_root_pw}
+      # Dev-only convenience: skips the master-password prompt on every open.
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
       - '8770:80'
     depends_on:
-      - mysql-development
+      - postgres-development
     restart: always
     networks:
       - laundry_network_development
@@ -70,10 +90,12 @@ services:
   adminer:
     container_name: laundry-adminer
     image: adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres-development
     ports:
       - '8110:8080'
     depends_on:
-      - mysql-development
+      - postgres-development
     restart: always
     networks:
       - laundry_network_development
@@ -89,8 +111,11 @@ services:
     env_file: ./gateway-service/.env
     environment:
       NODE_ENV: development
-      DB_HOST: mysql-development
-      DB_PORT: '3306'
+      DB_HOST: postgres-development
+      DB_PORT: '5432'
+      DB_NAME: laundry_development
+      DB_SCHEMA: gateway
+      DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
       COMMERCE_SERVICE_URL: http://commerce-service:5001
       LOGISTICS_SERVICE_URL: http://logistics-service:5002
@@ -99,7 +124,7 @@ services:
     ports:
       - '5000:5000'
     depends_on:
-      mysql-development:
+      postgres-development:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -112,13 +137,16 @@ services:
     build: ./commerce-service
     env_file: ./commerce-service/.env
     environment:
-      DB_HOST: mysql-development
-      DB_PORT: '3306'
+      DB_HOST: postgres-development
+      DB_PORT: '5432'
+      DB_NAME: laundry_development
+      DB_SCHEMA: commerce
+      DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:
       - '5001:5001'
     depends_on:
-      mysql-development:
+      postgres-development:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -131,13 +159,16 @@ services:
     build: ./logistics-service
     env_file: ./logistics-service/.env
     environment:
-      DB_HOST: mysql-development
-      DB_PORT: '3306'
+      DB_HOST: postgres-development
+      DB_PORT: '5432'
+      DB_NAME: laundry_development
+      DB_SCHEMA: logistics
+      DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:
       - '5002:5002'
     depends_on:
-      mysql-development:
+      postgres-development:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -150,13 +181,16 @@ services:
     build: ./finance-service
     env_file: ./finance-service/.env
     environment:
-      DB_HOST: mysql-development
-      DB_PORT: '3306'
+      DB_HOST: postgres-development
+      DB_PORT: '5432'
+      DB_NAME: laundry_development
+      DB_SCHEMA: finance
+      DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:
       - '5003:5003'
     depends_on:
-      mysql-development:
+      postgres-development:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -169,13 +203,16 @@ services:
     build: ./growth-service
     env_file: ./growth-service/.env
     environment:
-      DB_HOST: mysql-development
-      DB_PORT: '3306'
+      DB_HOST: postgres-development
+      DB_PORT: '5432'
+      DB_NAME: laundry_development
+      DB_SCHEMA: growth
+      DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:
       - '5004:5004'
     depends_on:
-      mysql-development:
+      postgres-development:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -184,4 +221,4 @@ services:
       - laundry_network_development
 
 volumes:
-  mysql-data-development:
+  postgres-data-development:

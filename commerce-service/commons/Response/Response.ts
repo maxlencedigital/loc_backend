@@ -8,10 +8,8 @@ interface SuccessPayload {
   result?: any;
 }
 
-/**
- * Every response from every service follows this exact shape,
- * so a client doesn't need to know which service answered.
- */
+// Every response from every service follows this exact shape, so a client never
+// needs to know which service answered.
 const handleSuccessResponse = (
   { statusCode, result = null }: SuccessPayload,
   res: Response,
@@ -25,17 +23,15 @@ const handleSuccessResponse = (
   });
 };
 
-/**
- * Single error path for every controller: pass whatever the
- * try/catch caught. A CustomException's own code/message is
- * used as-is; anything else is logged server-side and reported
- * to the client as a generic 500 (never leaks internals).
- */
+// Single error path for every controller. A CustomException's code and message
+// are used as-is; anything else is logged and reported as a generic 500.
 const handleErrorResponse = (error: unknown, res: Response) => {
   if (error instanceof CustomException) {
     return res.status(error.errorCode).json({
       statusCode: error.errorCode,
-      result: null,
+      // Usually null. Carries structured detail when the client must act on
+      // more than the message, e.g. OTP attempts remaining.
+      result: error.data ?? null,
       displayMessage: error.displayMessage,
       status: false,
     });
@@ -49,13 +45,8 @@ const handleErrorResponse = (error: unknown, res: Response) => {
   });
 };
 
-/**
- * For routes that are scaffolded per the API contract but not yet
- * wired to real logic — the route, request/response shape, and Swagger
- * doc are final; only the implementation is pending. Kept distinct from
- * handleErrorResponse so a contract stub is never confused with an
- * actual runtime failure.
- */
+// For routes scaffolded per the API contract but not yet implemented. Distinct
+// from handleErrorResponse so a stub is never mistaken for a runtime failure.
 const handleNotImplementedResponse = (
   res: Response,
   displayMessage: string = "Endpoint scaffolded per API contract — implementation pending."

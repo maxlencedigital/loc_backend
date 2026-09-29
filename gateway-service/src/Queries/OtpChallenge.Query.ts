@@ -1,71 +1,73 @@
-import { Op } from "sequelize";
-import { OtpChallengeModel } from "../Models/OtpChallenge/OtpChallenge.Model.js";
-import { IOtpChallengeCreate, OtpPurpose } from "../Models/OtpChallenge/OtpChallenge.Interface.js";
+import { prisma } from "../DB/Prisma.Connection.Db.js";
+import {
+  IOtpChallenge,
+  IOtpChallengeCreate,
+  OtpPurpose,
+} from "../Models/OtpChallenge/OtpChallenge.Interface.js";
 
-const create = async (challenge: IOtpChallengeCreate): Promise<OtpChallengeModel> => {
-  return OtpChallengeModel.create(challenge);
+const create = async (challenge: IOtpChallengeCreate): Promise<IOtpChallenge> => {
+  return prisma.otpChallenge.create({ data: challenge });
 };
 
-const findById = async (id: string): Promise<OtpChallengeModel | null> => {
-  return OtpChallengeModel.findByPk(id);
+const findById = async (id: string): Promise<IOtpChallenge | null> => {
+  return prisma.otpChallenge.findUnique({ where: { id } });
 };
 
 const recordAttempt = async (id: string): Promise<void> => {
   // Atomic increment rather than read-modify-write: two simultaneous wrong
   // guesses must both count, or the attempt cap can be walked past by racing.
-  await OtpChallengeModel.increment("attempts", { by: 1, where: { id } });
+  await prisma.otpChallenge.update({
+    where: { id },
+    data: { attempts: { increment: 1 } },
+  });
 };
 
-/**
- * The phone/email is proven. The challenge is not spent yet.
- *
- * `newExpiresAt` extends the deadline: the 5-minute life of the *code* is a
- * security property, but once the number is proven the user still has a form
- * to finish, and expiring mid-typing would send them back to the start.
- */
+// The destination is proven but the challenge is not spent. newExpiresAt
+// extends the deadline so the form can be finished without expiring mid-typing.
 const markVerified = async (id: string, newExpiresAt: Date): Promise<void> => {
-  await OtpChallengeModel.update(
-    { verifiedAt: new Date(), expiresAt: newExpiresAt },
-    { where: { id } }
-  );
+  await prisma.otpChallenge.update({
+    where: { id },
+    data: { verifiedAt: new Date(), expiresAt: newExpiresAt },
+  });
 };
 
 /** The challenge is spent and can never be used again. */
 const markConsumed = async (id: string): Promise<void> => {
-  await OtpChallengeModel.update({ consumedAt: new Date() }, { where: { id } });
+  await prisma.otpChallenge.update({
+    where: { id },
+    data: { consumedAt: new Date() },
+  });
 };
 
-/**
- * How many challenges were issued to this destination recently — the input to
- * the resend throttle. Rate limiting by IP alone wouldn't stop someone cycling
- * IPs to spam one person's phone (and run up the SMS bill).
- */
+// Input to the resend throttle. Limiting by IP alone would not stop someone
+// cycling IPs to spam one person's phone and run up the SMS bill.
 const countRecentFor = async (
   destination: string,
   purpose: OtpPurpose,
   since: Date
 ): Promise<number> => {
-  return OtpChallengeModel.count({
-    where: { destination, purpose, createdAt: { [Op.gte]: since } },
+  return prisma.otpChallenge.count({
+    where: { destination, purpose, createdAt: { gte: since } },
   });
 };
 
 const findLatestFor = async (
   destination: string,
   purpose: OtpPurpose
-): Promise<OtpChallengeModel | null> => {
-  return OtpChallengeModel.findOne({
+): Promise<IOtpChallenge | null> => {
+  return prisma.otpChallenge.findFirst({
     where: { destination, purpose },
-    order: [["createdAt", "DESC"]],
+    orderBy: { createdAt: "desc" },
   });
 };
 
-/**
- * Housekeeping. Expired challenges are useless but still hold a phone number
- * and email, so there's no reason to keep them around.
- */
+// Housekeeping: expired challenges are useless but still hold a phone number
+// and email, so there is no reason to keep them.
 const deleteExpiredBefore = async (cutoff: Date): Promise<number> => {
-  return OtpChallengeModel.destroy({ where: { expiresAt: { [Op.lt]: cutoff } } });
+  const { count } = await prisma.otpChallenge.deleteMany({
+    where: { expiresAt: { lt: cutoff } },
+  });
+  return count;
 };
 
 export const OtpChallengeQuery = {

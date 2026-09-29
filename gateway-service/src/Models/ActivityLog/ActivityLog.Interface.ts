@@ -6,7 +6,7 @@ export interface IActivityLog {
   userId?: string | null;
   statusCode: number;
   ip?: string | null;
-  createdAt?: Date;
+  createdAt: Date;
 }
 
 export type IActivityLogCreate = Omit<IActivityLog, "id" | "createdAt">;

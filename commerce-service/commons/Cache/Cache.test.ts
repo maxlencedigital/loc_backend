@@ -1,6 +1,5 @@
-// Redis is mocked as unavailable here (no REDIS_URL in the test env), which
-// is exactly the condition these tests care about: the cache must be
-// completely transparent when it isn't there.
+// Redis is unavailable here (no REDIS_URL in the test env) — exactly the
+// condition these tests exist for: the cache must be completely transparent.
 import { getOrSet, cacheGet, cacheSet, cacheDel, TTL } from "./Cache.js";
 
 describe("cache with Redis unavailable (graceful degradation)", () => {
