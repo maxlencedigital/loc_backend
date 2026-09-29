@@ -28,6 +28,9 @@ jobs:
       growth: ${{ steps.filter.outputs.growth }}
       logistics: ${{ steps.filter.outputs.logistics }}
     steps:
+      # paths-filter needs a checkout on push events (it shells out to git); only
+      # pull_request runs skip it, because they read changed files from the API.
+      - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: filter
         with:
