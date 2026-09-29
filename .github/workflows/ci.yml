@@ -27,6 +27,7 @@ jobs:
       gateway: ${{ steps.filter.outputs.gateway }}
       growth: ${{ steps.filter.outputs.growth }}
       logistics: ${{ steps.filter.outputs.logistics }}
+      workflow: ${{ steps.filter.outputs.workflow }}
     steps:
       # paths-filter needs a checkout on push events (it shells out to git); only
       # pull_request runs skip it, because they read changed files from the API.
@@ -45,6 +46,8 @@ jobs:
               - 'growth-service/**'
             logistics:
               - 'logistics-service/**'
+            workflow:
+              - '.github/workflows/**'
 
   build-and-test:
     name: ${{ matrix.service }}
@@ -52,18 +55,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # A service is tested when its folder changed, when the workflow itself
+      # changed, or on a manual run — otherwise a CI-only commit checks nothing.
       matrix:
         include:
           - service: commerce-service
-            changed: ${{ needs.changes.outputs.commerce }}
+            changed: ${{ format('{0}', needs.changes.outputs.commerce == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch') }}
           - service: finance-service
-            changed: ${{ needs.changes.outputs.finance }}
+            changed: ${{ format('{0}', needs.changes.outputs.finance == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch') }}
           - service: gateway-service
-            changed: ${{ needs.changes.outputs.gateway }}
+            changed: ${{ format('{0}', needs.changes.outputs.gateway == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch') }}
           - service: growth-service
-            changed: ${{ needs.changes.outputs.growth }}
+            changed: ${{ format('{0}', needs.changes.outputs.growth == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch') }}
           - service: logistics-service
-            changed: ${{ needs.changes.outputs.logistics }}
+            changed: ${{ format('{0}', needs.changes.outputs.logistics == 'true' || needs.changes.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch') }}
     steps:
       - name: Checkout
         if: matrix.changed == 'true'
