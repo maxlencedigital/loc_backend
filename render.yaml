@@ -20,29 +20,12 @@
 #   - Free allows no persistent disk; nothing here needs one.
 
 envVarGroups:
-  # One group, so all 5 services share the SAME database and the SAME
-  # internal secret. Setting these per service invites a typo that would
-  # make one service silently reject the gateway's calls with 403.
+  # Shared by all 5 services so they hold the SAME internal secret. Render
+  # ignores `sync: false` in a group, so the database URLs are per service.
   - name: loc-shared
     envVars:
-      # Supabase -> Project Settings -> Database -> Connection pooling.
-      # MUST be the POOLED string (port 6543), not the direct one (5432):
-      # free-tier hosts open and drop connections constantly, and the direct
-      # port's connection limit is exhausted within minutes by 5 services.
-      # sync:false means Render prompts for it and it never enters git.
-      - key: DATABASE_URL
-        sync: false
-      # Supabase's DIRECT string (port 5432), used only by `prisma migrate
-      # deploy` in the gateway's build command. Prisma Migrate takes a
-      # Postgres advisory lock, and a transaction-mode pooler hands each
-      # statement to a different backend — so the lock would be taken on one
-      # connection and released on another, leaving migrations hung or half
-      # applied. Same page in Supabase, above the pooling section.
-      - key: DIRECT_DATABASE_URL
-        sync: false
-      # Random 256-bit value, generated once and shared by all 5. On the free
-      # tier this is the only thing between the public internet and the
-      # downstream services, so it must not be the local dev value.
+      # Generated once. On the free tier this is all that stands between the
+      # public internet and the downstream services.
       - key: INTERNAL_SERVICE_SECRET
         generateValue: true
 
@@ -72,6 +55,13 @@ services:
     autoDeploy: true
     envVars:
       - fromGroup: loc-shared
+      # POOLED connection (transaction pooler, :6543) for every normal query.
+      - key: DATABASE_URL
+        sync: false
+      # Prisma Migrate needs a DIRECT connection, not the pooler: its advisory lock
+      # would be taken and released on different backends. Session pooler, :5432.
+      - key: DIRECT_DATABASE_URL
+        sync: false
       - key: NODE_ENV
         value: production
       # PORT is deliberately absent. Render assigns it and the code already
@@ -177,6 +167,8 @@ services:
         - commerce-service/**
     envVars:
       - fromGroup: loc-shared
+      - key: DATABASE_URL
+        sync: false
       - key: NODE_ENV
         value: production
       - key: DB_SCHEMA
@@ -206,6 +198,8 @@ services:
         - logistics-service/**
     envVars:
       - fromGroup: loc-shared
+      - key: DATABASE_URL
+        sync: false
       - key: NODE_ENV
         value: production
       - key: DB_SCHEMA
@@ -235,6 +229,8 @@ services:
         - finance-service/**
     envVars:
       - fromGroup: loc-shared
+      - key: DATABASE_URL
+        sync: false
       - key: NODE_ENV
         value: production
       - key: DB_SCHEMA
@@ -264,6 +260,8 @@ services:
         - growth-service/**
     envVars:
       - fromGroup: loc-shared
+      - key: DATABASE_URL
+        sync: false
       - key: NODE_ENV
         value: production
       - key: DB_SCHEMA
