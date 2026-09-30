@@ -52,8 +52,26 @@ describe("requireIdentity", () => {
   it("attaches the identity and calls next() when both headers are present", () => {
     const { req, res, next } = mockReqRes({ "x-user-id": "u1", "x-user-role": "staff" });
     requireIdentity(req, res, next);
-    expect(req.user).toEqual({ id: "u1", role: "staff" });
+    expect(req.user).toEqual({ id: "u1", role: "staff", storeId: null, scopeStoreId: null, name: null });
     expect(next).toHaveBeenCalled();
+  });
+
+  it("carries the store, the scope and the display name the gateway forwards", () => {
+    const { req, res, next } = mockReqRes({
+      "x-user-id": "u1",
+      "x-user-role": "admin",
+      "x-user-store-id": " store-1 ",
+      "x-store-scope": "store-2",
+      "x-user-name": "Meera Nair",
+    });
+    requireIdentity(req, res, next);
+    expect(req.user).toEqual({ id: "u1", role: "admin", storeId: "store-1", scopeStoreId: "store-2", name: "Meera Nair" });
+  });
+
+  it("treats blank store headers as absent", () => {
+    const { req, res, next } = mockReqRes({ "x-user-id": "u1", "x-user-role": "manager", "x-user-store-id": "  " });
+    requireIdentity(req, res, next);
+    expect(req.user?.storeId).toBeNull();
   });
 });
 

@@ -8,7 +8,7 @@ import { badRequest } from "../../commons/Utils/StatusCode.js";
  * /garments/{tagId}/scan:
  *   post:
  *     summary: Scan a garment's QR tag to record an in/out tracking event
- *     tags: [Garments]
+ *     tags: ["Store - Garment Tracking"]
  *     parameters:
  *       - in: path
  *         name: tagId
@@ -67,7 +67,7 @@ const scan = async (req: Request, res: Response) => {
  * /garments/{id}/image:
  *   post:
  *     summary: Attach a captured image to a garment/order item
- *     tags: [Garments]
+ *     tags: ["Store - Garment Tracking"]
  *     parameters:
  *       - in: path
  *         name: id

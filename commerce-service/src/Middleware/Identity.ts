@@ -3,11 +3,34 @@ import { handleErrorResponse } from "../../commons/Response/Response.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { unauthorized, forbidden } from "../../commons/Utils/StatusCode.js";
 
-export type UserRole = "super_admin" | "admin" | "staff" | "driver" | "customer";
+export type UserRole = "super_admin" | "admin" | "manager" | "hr" | "staff" | "driver" | "customer";
+
+export interface RequestUser {
+  id: string;
+  role: UserRole;
+  // The store the account belongs to (x-user-store-id, set by the gateway from the token).
+  storeId: string | null;
+  // The store an admin chose to view (x-store-scope); the gateway only sets it for admins.
+  scopeStoreId: string | null;
+  // Display name for audit trails; absent unless the gateway forwards x-user-name.
+  name: string | null;
+}
 
 export interface IdentifiedRequest extends Request {
-  user?: { id: string; role: UserRole };
+  user?: RequestUser;
 }
+
+const headerOrNull = (req: Request, name: string): string | null => req.header(name)?.trim() || null;
+
+// The gateway percent-encodes the name; a malformed value is dropped, not a 500.
+const decodeName = (value: string | null): string | null => {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+};
 
 // Applied to every route except /health. Only the gateway holds this secret;
 // without the check, x-user-id and x-user-role are headers anyone can set.
@@ -33,7 +56,13 @@ const requireIdentity = (req: IdentifiedRequest, res: Response, next: NextFuncti
       res
     );
   }
-  req.user = { id: userId, role };
+  req.user = {
+    id: userId,
+    role,
+    storeId: headerOrNull(req, "x-user-store-id"),
+    scopeStoreId: headerOrNull(req, "x-store-scope"),
+    name: decodeName(headerOrNull(req, "x-user-name")),
+  };
   next();
 };
 

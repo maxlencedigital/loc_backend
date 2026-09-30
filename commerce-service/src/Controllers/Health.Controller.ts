@@ -9,6 +9,7 @@ import { CustomException } from "../../commons/Exception/CustomException.js";
  * /health:
  *   get:
  *     summary: Liveness/readiness probe
+ *     tags: [System]
  *     description: Returns 200 only if the database connection is actually reachable.
  *     responses:
  *       200:

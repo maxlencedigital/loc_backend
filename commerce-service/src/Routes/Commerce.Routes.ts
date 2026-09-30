@@ -6,6 +6,7 @@ import catalogRoutes from "./Catalog.Routes.js";
 import garmentRoutes from "./Garment.Routes.js";
 import storeRoutes from "./Store.Routes.js";
 import invoiceRoutes from "./Invoice.Routes.js";
+import generatedRoutes from "./Generated.Routes.js";
 
 const router = express.Router();
 
@@ -19,5 +20,8 @@ router.use(catalogRoutes);
 router.use(garmentRoutes);
 router.use(storeRoutes);
 router.use(invoiceRoutes);
+
+// Role-guarded contract scaffolds generated from the API catalogue.
+router.use(generatedRoutes);
 
 export default router;

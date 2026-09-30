@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./commons/Config/LoadEnv";
 import { defineConfig } from "prisma/config";
 import { buildCliUrls } from "./scripts/database-url.mjs";
 

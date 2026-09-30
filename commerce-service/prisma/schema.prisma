@@ -1,10 +1,10 @@
-// Commerce service data model — orders, customers, catalog, garments,
-// stores and invoices.
+// Commerce service data model: stores, customers, the service catalogue and
+// price lists, and orders with their timeline.
 //
-// No models yet: the routes exist as documented contracts returning 501 while
-// the service logic is built out module by module (see
-// src/Routes/Commerce.Routes.ts). Models land here as each module is
-// implemented, one migration at a time.
+// Money is integer paise and quantities are integer thousandths (milli-units),
+// so a total is exact integer arithmetic; the API converts at the boundary.
+// Other modules (garments, invoices, HR) land here as they are implemented,
+// one migration at a time.
 //
 // These tables live in their own Postgres schema (DB_SCHEMA=commerce). That
 // is what keeps "no service reads another's tables" real rather than a
@@ -20,4 +20,264 @@ datasource db {
   // schema. The CLI reads its URL from prisma.config.ts, and the running
   // server passes its own through a driver adapter — see
   // src/DB/Prisma.Connection.Db.ts.
+}
+
+enum StoreStatus {
+  live
+  planned
+  closed
+}
+
+enum StoreType {
+  processing
+  pickup_hub
+  franchise
+}
+
+enum CustomerType {
+  retail
+  corporate
+}
+
+enum ServiceDepartment {
+  laundry
+  dry_clean
+  finishing
+  household
+  premium
+  specialty
+}
+
+enum ServiceUnit {
+  kg
+  piece
+  pair
+}
+
+enum GarmentCategory {
+  men
+  women
+  kids
+  household
+  premium
+}
+
+// Declaration order is the order an order moves through the plant; `cancelled`
+// sits outside that flow.
+enum OrderStatus {
+  booked
+  picked_up
+  received
+  sorted
+  washing
+  drying
+  quality_check
+  packed
+  out_for_delivery
+  delivered
+  cancelled
+}
+
+enum OrderPriority {
+  standard
+  express
+}
+
+enum OrderPaymentStatus {
+  paid
+  unpaid
+  part_paid
+}
+
+enum OrderChannel {
+  app
+  walk_in
+  web
+  phone
+}
+
+model Store {
+  id               String      @id @default(uuid()) @db.Uuid
+  code             String      @unique
+  name             String
+  city             String
+  address          String
+  status           StoreStatus @default(live)
+  type             StoreType
+  openingHours     String
+  capacityKgPerDay Int
+  createdAt        DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(6)
+
+  customers  Customer[]
+  orders     Order[]
+  priceLists PriceList[]
+
+  @@map("commerce_stores")
+}
+
+model Customer {
+  id                 String       @id @default(uuid()) @db.Uuid
+  // The store that owns the relationship; a store-bound role only sees these.
+  storeId            String       @db.Uuid
+  name               String
+  // Canonical "+91 NNNNN NNNNN" form, so the same number cannot be added twice.
+  phone              String       @unique
+  email              String       @default("")
+  type               CustomerType @default(retail)
+  // Denormalised so the customer list needs no aggregate over every order.
+  orderCount         Int          @default(0)
+  lifetimeValuePaise Int          @default(0)
+  lastOrderAt        DateTime?    @db.Timestamptz(6)
+  churnRisk          Int          @default(0)
+  rating             Float?
+  addresses          String[]
+  walletBalancePaise Int          @default(0)
+  loyaltyPoints      Int          @default(0)
+  tags               String[]
+  createdAt          DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(6)
+
+  store  Store   @relation(fields: [storeId], references: [id])
+  orders Order[]
+
+  @@index([storeId, createdAt(sort: Desc)], map: "idx_customer_store_created")
+  @@map("commerce_customers")
+}
+
+model Service {
+  id               String            @id @default(uuid()) @db.Uuid
+  // Stable natural key, so seeding and imports can upsert without the id.
+  code             String            @unique
+  name             String
+  department       ServiceDepartment
+  unit             ServiceUnit
+  turnaroundHours  Int
+  expressAvailable Boolean           @default(false)
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(6)
+
+  priceRows PriceRow[]
+
+  @@map("commerce_services")
+}
+
+// A list applies to every store and customer type unless narrowed by storeId
+// and/or customerType; the most specific active list wins when pricing.
+model PriceList {
+  id           String        @id @default(uuid()) @db.Uuid
+  name         String        @unique
+  appliesTo    String        @default("")
+  active       Boolean       @default(true)
+  storeId      String?       @db.Uuid
+  customerType CustomerType?
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @db.Timestamptz(6)
+
+  store Store?     @relation(fields: [storeId], references: [id])
+  rows  PriceRow[]
+
+  @@index([active], map: "idx_price_list_active")
+  @@map("commerce_price_lists")
+}
+
+model PriceRow {
+  id               String          @id @default(uuid()) @db.Uuid
+  priceListId      String          @db.Uuid
+  serviceId        String          @db.Uuid
+  garment          String
+  category         GarmentCategory
+  ratePaise        Int
+  expressRatePaise Int
+  createdAt        DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(6)
+
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  service   Service   @relation(fields: [serviceId], references: [id])
+
+  @@unique([priceListId, serviceId, garment, category], map: "uq_price_row_item")
+  @@index([serviceId], map: "idx_price_row_service")
+  @@map("commerce_price_rows")
+}
+
+model Order {
+  id              String             @id @default(uuid()) @db.Uuid
+  // Human-readable reference, e.g. LOC-24800; numbered by SequenceCounter.
+  ref             String             @unique
+  storeId         String             @db.Uuid
+  customerId      String             @db.Uuid
+  status          OrderStatus        @default(booked)
+  priority        OrderPriority      @default(standard)
+  paymentStatus   OrderPaymentStatus @default(unpaid)
+  channel         OrderChannel       @default(walk_in)
+  pieces          Int
+  weightGrams     Int
+  amountPaise     Int
+  placedAt        DateTime           @default(now()) @db.Timestamptz(6)
+  promisedAt      DateTime           @db.Timestamptz(6)
+  // Fabric, soil and handling notes for the floor (the dashboard's CareProfile).
+  care            Json
+  riderName       String?
+  address         String             @default("")
+  createdByUserId String?
+  createdAt       DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(6)
+
+  store    Store        @relation(fields: [storeId], references: [id])
+  customer Customer     @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
+  events   OrderEvent[]
+
+  @@index([storeId, placedAt(sort: Desc)], map: "idx_order_store_placed")
+  @@index([storeId, status], map: "idx_order_store_status")
+  @@index([customerId], map: "idx_order_customer")
+  @@index([placedAt(sort: Desc)], map: "idx_order_placed")
+  @@map("commerce_orders")
+}
+
+model OrderItem {
+  id            String          @id @default(uuid()) @db.Uuid
+  orderId       String          @db.Uuid
+  position      Int
+  serviceId     String          @db.Uuid
+  // Snapshot: a later rename or repricing must not rewrite a past order.
+  serviceName   String
+  garment       String
+  category      GarmentCategory
+  unit          ServiceUnit
+  quantityMilli Int
+  ratePaise     Int
+  amountPaise   Int
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, position], map: "idx_order_item_order")
+  @@map("commerce_order_items")
+}
+
+// Append-only timeline: one row per status change, written in the same
+// transaction as the change itself.
+model OrderEvent {
+  id       String      @id @default(uuid()) @db.Uuid
+  orderId  String      @db.Uuid
+  status   OrderStatus
+  byName   String
+  byUserId String?
+  note     String?
+  at       DateTime    @default(now()) @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, at], map: "idx_order_event_order_at")
+  @@map("commerce_order_events")
+}
+
+// Incrementing the row is one atomic UPDATE, so two concurrent bookings can
+// never be handed the same number; the lock lasts until the booking commits.
+model SequenceCounter {
+  name  String @id
+  value Int
+
+  @@map("commerce_sequence_counters")
 }

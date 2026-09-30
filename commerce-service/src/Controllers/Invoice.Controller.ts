@@ -8,7 +8,7 @@ import { badRequest } from "../../commons/Utils/StatusCode.js";
  * /invoices/batch:
  *   post:
  *     summary: Kick off a batch invoice run (e.g. monthly, per customer or store)
- *     tags: [Invoices]
+ *     tags: ["Store - Invoices"]
  *     requestBody:
  *       required: true
  *       content:
@@ -56,7 +56,7 @@ const runBatch = async (req: Request, res: Response) => {
  * /invoices/{id}/print:
  *   get:
  *     summary: Get print-ready data for an invoice
- *     tags: [Invoices]
+ *     tags: ["Store - Invoices"]
  *     parameters:
  *       - in: path
  *         name: id
