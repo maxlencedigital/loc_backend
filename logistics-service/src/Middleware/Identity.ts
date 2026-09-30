@@ -3,7 +3,7 @@ import { handleErrorResponse } from "../../commons/Response/Response.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { unauthorized, forbidden } from "../../commons/Utils/StatusCode.js";
 
-export type UserRole = "super_admin" | "admin" | "staff" | "driver" | "customer";
+export type UserRole = "super_admin" | "admin" | "manager" | "hr" | "staff" | "driver" | "customer";
 
 export interface IdentifiedRequest extends Request {
   user?: { id: string; role: UserRole };
