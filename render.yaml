@@ -26,6 +26,10 @@ envVarGroups:
     envVars:
       # Generated once. On the free tier this is all that stands between the
       # public internet and the downstream services.
+      # The one environment switch. false = hosted: the app reads only what is set
+      # here. Never true on Render; the service refuses to start if it is.
+      - key: IS_LOCAL
+        value: "false"
       - key: INTERNAL_SERVICE_SECRET
         generateValue: true
 
@@ -119,6 +123,14 @@ services:
         sync: false
       - key: TRANSMIT_SMS_FROM_NUMBER
         sync: false
+      # Email goes over an HTTPS API because the free tier blocks SMTP ports.
+      # Set EMAIL_API_PROVIDER to brevo or resend, then the key and a verified sender.
+      - key: EMAIL_API_PROVIDER
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
       - key: EMAIL_SERVICE
         sync: false
       - key: EMAIL_HOST
@@ -160,7 +172,7 @@ services:
     region: singapore
     branch: dev
     rootDir: commerce-service
-    buildCommand: npm ci --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -170,6 +182,10 @@ services:
     envVars:
       - fromGroup: loc-shared
       - key: DATABASE_URL
+        sync: false
+      # Migrations need the DIRECT connection: the pooler would release Prisma's
+      # advisory lock on a different connection than took it.
+      - key: DIRECT_DATABASE_URL
         sync: false
       - key: NODE_ENV
         value: production
@@ -214,6 +230,9 @@ services:
         value: "true"
       - key: RATE_LIMIT_ENABLED
         value: "false"
+      # Google Cloud key with the Geocoding and Directions APIs enabled and billing linked.
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
 
   - type: web
     name: loc-finance-service
@@ -222,7 +241,7 @@ services:
     region: singapore
     branch: dev
     rootDir: finance-service
-    buildCommand: npm ci --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -232,6 +251,10 @@ services:
     envVars:
       - fromGroup: loc-shared
       - key: DATABASE_URL
+        sync: false
+      # Migrations need the DIRECT connection: the pooler would release Prisma's
+      # advisory lock on a different connection than took it.
+      - key: DIRECT_DATABASE_URL
         sync: false
       - key: NODE_ENV
         value: production
@@ -245,6 +268,17 @@ services:
         value: "true"
       - key: RATE_LIMIT_ENABLED
         value: "false"
+      # Razorpay. Test keys (rzp_test_...) in the sandbox; live keys only at launch.
+      # The webhook secret is the one typed into Razorpay's webhook settings, NOT the key secret.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      # automatic (default) or manual, matching the Razorpay dashboard capture setting.
+      - key: RAZORPAY_CAPTURE_MODE
+        value: automatic
 
   - type: web
     name: loc-growth-service
@@ -270,6 +304,30 @@ services:
         value: growth
       - key: CACHE_NAMESPACE
         value: growth
+      # Notification Hub providers. A channel left unset reports "not configured"
+      # and sends nothing. Paste the SMS values from gateway-service/.env.
+      - key: TRANSMIT_SMS_API_KEY
+        sync: false
+      - key: TRANSMIT_SMS_API_SECRET
+        sync: false
+      - key: TRANSMIT_SMS_FROM_NUMBER
+        sync: false
+      - key: SMS_SENDER_ID
+        sync: false
+      # Email over an HTTPS API (brevo or resend); the free tier blocks SMTP ports.
+      - key: EMAIL_API_PROVIDER
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # Meta WhatsApp Cloud API.
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_API_VERSION
+        sync: false
       - key: CORS_ORIGIN
         value: https://loc-gateway-service.onrender.com
       - key: TRUST_PROXY
