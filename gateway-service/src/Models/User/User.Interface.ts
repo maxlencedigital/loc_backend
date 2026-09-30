@@ -1,4 +1,4 @@
-export type UserRole = "super_admin" | "admin" | "staff" | "driver" | "customer";
+export type UserRole = "super_admin" | "admin" | "manager" | "hr" | "staff" | "driver" | "customer";
 
 export type OAuthProvider = "google" | "facebook" | "apple";
 
@@ -29,6 +29,16 @@ export interface IUser {
   oauthSubject: string | null;
   role: UserRole;
   isActive: boolean;
+  /**
+   * Carried in the JWT. Not a foreign key: stores live in commerce, which this
+   * service never reads.
+   */
+  storeId: string | null;
+  lastLoginAt: Date | null;
+  createdAt: Date;
 }
 
-export type IUserCreate = Omit<IUser, "id">;
+// storeId is optional so flows that never assign a store (register, OAuth) stay as they were.
+export type IUserCreate = Omit<IUser, "id" | "storeId" | "lastLoginAt" | "createdAt"> & {
+  storeId?: string | null;
+};

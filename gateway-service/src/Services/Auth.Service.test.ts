@@ -1,5 +1,15 @@
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { CustomException } from "../../commons/Exception/CustomException.js";
+
+// Sessions are covered in Session.Service.test.ts; here the store just has to accept writes.
+jest.mock("../Queries/RefreshToken.Query.js", () => ({
+  RefreshTokenQuery: {
+    create: jest.fn().mockResolvedValue({}),
+    purgeExpired: jest.fn().mockResolvedValue(0),
+    revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 
 // Factory-mocked so this test never loads the real Query -> Prisma client
 // chain, which would otherwise need DATABASE_URL just to import.
@@ -12,6 +22,7 @@ jest.mock("../Queries/User.Query.js", () => ({
     findByOAuthIdentity: jest.fn(),
     setPassword: jest.fn(),
     linkOAuthIdentity: jest.fn(),
+    recordLogin: jest.fn(),
   },
 }));
 
@@ -49,6 +60,21 @@ import { UserQuery } from "../Queries/User.Query.js";
 import { AuthService } from "./Auth.Service.js";
 
 const mockedUserQuery = UserQuery as jest.Mocked<typeof UserQuery>;
+
+const STORE_ID = "11111111-1111-4111-8111-111111111101";
+
+const accountRow = (overrides: object = {}) => ({
+  id: "1",
+  name: "Asha Rao",
+  email: "a@x.com",
+  phoneNumber: "+919876500001",
+  isActive: true,
+  role: "manager",
+  storeId: STORE_ID,
+  lastLoginAt: null,
+  createdAt: new Date("2026-01-05T08:00:00.000Z"),
+  ...overrides,
+});
 
 beforeEach(() => {
   process.env.JWT_SECRET = "test-secret";
@@ -145,19 +171,37 @@ describe("AuthService.register", () => {
     expect(error.displayMessage).toContain("phone number");
   });
 
-  it("does not swallow a database error that is not a unique violation", async () => {
+  it("reports a non-unique database failure as a generic 500, never as a 409", async () => {
+    const logSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
     mockedUserQuery.findByEmail.mockResolvedValue(null);
     const outage = Object.assign(new Error("connection terminated"), { code: "P1001" });
     mockedUserQuery.create.mockRejectedValue(outage);
 
-    await expect(
-      AuthService.register({
-        name: "A",
-        email: "a@x.com",
-        phoneNumber: "1",
-        password: "plaintext-pw",
-      })
-    ).rejects.toBe(outage);
+    const error = await AuthService.register({
+      name: "A",
+      email: "a@x.com",
+      phoneNumber: "1",
+      password: "plaintext-pw",
+    }).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(CustomException);
+    expect(error.errorCode).toBe(500);
+    // The driver's own message must not reach the client.
+    expect(error.displayMessage).not.toContain("connection terminated");
+    // ...but it is logged, so the real cause is still findable.
+    expect(logSpy).toHaveBeenCalledWith(outage);
+    logSpy.mockRestore();
+  });
+
+  it("puts an unexpected query failure into the standard error format (login)", async () => {
+    const logSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    mockedUserQuery.findByEmail.mockRejectedValue(new Error("pool exhausted"));
+
+    const error = await AuthService.login("a@x.com", "plaintext-pw").catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(CustomException);
+    expect(error.errorCode).toBe(500);
+    logSpy.mockRestore();
   });
 
   it("creates the user with a hashed (never plaintext) password", async () => {
@@ -231,6 +275,40 @@ describe("AuthService.createPrivilegedUser", () => {
     expect(mockedUserQuery.create.mock.calls[0][0].role).toBe("admin");
   });
 
+  it.each(["manager", "hr", "staff", "driver"] as const)(
+    "creates a %s account — the store manager, HR & Operations, staff and rider roles",
+    async (role) => {
+      mockedUserQuery.findByEmail.mockResolvedValue(null);
+      mockedUserQuery.create.mockResolvedValue({ id: "new-id", email: "x@x.com", role } as any);
+
+      const result = await AuthService.createPrivilegedUser({
+        name: "Person",
+        email: "x@x.com",
+        phoneNumber: "1",
+        password: "plaintext-pw",
+        role,
+      });
+
+      expect(result.role).toBe(role);
+      expect(mockedUserQuery.create.mock.calls[0][0].role).toBe(role);
+    }
+  );
+
+  it("store manager and HR accounts can never be given super_admin or customer through this API", async () => {
+    for (const role of ["super_admin", "customer"] as const) {
+      const error = await AuthService.createPrivilegedUser({
+        name: "P",
+        email: "p@x.com",
+        phoneNumber: "1",
+        password: "plaintext-pw",
+        role,
+      }).catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(CustomException);
+      expect(error.errorCode).toBe(400);
+    }
+  });
+
   it("still enforces the same input validation as register", async () => {
     await expect(
       AuthService.createPrivilegedUser({
@@ -280,21 +358,96 @@ describe("AuthService.login", () => {
     await expect(AuthService.login("a@x.com", "wrong-password")).rejects.toThrow(CustomException);
   });
 
-  it("issues a token and the user summary on correct credentials", async () => {
+  it("returns the dashboard user shape and a token carrying the store", async () => {
     const passwordHash = await bcrypt.hash("correct-password", 4);
-    mockedUserQuery.findByEmail.mockResolvedValue({
-      id: "1",
-      name: "A",
-      email: "a@x.com",
-      passwordHash,
-      isActive: true,
-      role: "staff",
-    } as any);
+    mockedUserQuery.findByEmail.mockResolvedValue(accountRow({ passwordHash }) as any);
+    const loggedInAt = new Date("2026-09-30T10:00:00.000Z");
+    mockedUserQuery.recordLogin.mockResolvedValue(
+      accountRow({ passwordHash, lastLoginAt: loggedInAt }) as any
+    );
 
     const result = await AuthService.login("a@x.com", "correct-password");
 
-    expect(result.token).toEqual(expect.any(String));
-    expect(result.user).toEqual({ id: "1", name: "A", email: "a@x.com", role: "staff" });
+    expect(result.user).toEqual({
+      id: "1",
+      name: "Asha Rao",
+      email: "a@x.com",
+      phone: "+919876500001",
+      role: "manager",
+      storeId: STORE_ID,
+      initials: "AR",
+      status: "active",
+      lastActiveAt: "2026-09-30T10:00:00.000Z",
+      joinedAt: "2026-01-05T08:00:00.000Z",
+    });
+    expect(AuthService.verifyToken(result.token)).toEqual({
+      userId: "1",
+      role: "manager",
+      storeId: STORE_ID,
+      name: "Asha Rao",
+    });
+  });
+
+  it("stamps lastLoginAt on success", async () => {
+    const passwordHash = await bcrypt.hash("correct-password", 4);
+    mockedUserQuery.findByEmail.mockResolvedValue(accountRow({ passwordHash }) as any);
+    mockedUserQuery.recordLogin.mockResolvedValue(accountRow({ passwordHash }) as any);
+
+    await AuthService.login("a@x.com", "correct-password");
+
+    expect(mockedUserQuery.recordLogin).toHaveBeenCalledWith("1");
+  });
+
+  it("does not stamp lastLoginAt on a wrong password or an inactive account", async () => {
+    const passwordHash = await bcrypt.hash("correct-password", 4);
+    mockedUserQuery.findByEmail.mockResolvedValue(accountRow({ passwordHash }) as any);
+    await expect(AuthService.login("a@x.com", "wrong-password")).rejects.toThrow(CustomException);
+
+    mockedUserQuery.findByEmail.mockResolvedValue(
+      accountRow({ passwordHash, isActive: false }) as any
+    );
+    await expect(AuthService.login("a@x.com", "correct-password")).rejects.toThrow(CustomException);
+
+    expect(mockedUserQuery.recordLogin).not.toHaveBeenCalled();
+  });
+
+  it("falls back to createdAt for lastActiveAt when the row has no login stamp", async () => {
+    const passwordHash = await bcrypt.hash("correct-password", 4);
+    mockedUserQuery.findByEmail.mockResolvedValue(accountRow({ passwordHash }) as any);
+    mockedUserQuery.recordLogin.mockResolvedValue(
+      accountRow({ passwordHash, lastLoginAt: null }) as any
+    );
+
+    const { user } = await AuthService.login("a@x.com", "correct-password");
+
+    expect(user.lastActiveAt).toBe(user.joinedAt);
+  });
+});
+
+describe("AuthService.getProfile", () => {
+  it("returns the dashboard user read fresh from the database", async () => {
+    mockedUserQuery.findById.mockResolvedValue(accountRow({ role: "admin", storeId: null }) as any);
+
+    await expect(AuthService.getProfile("1")).resolves.toMatchObject({
+      id: "1",
+      role: "admin",
+      storeId: null,
+      status: "active",
+    });
+    expect(mockedUserQuery.findById).toHaveBeenCalledWith("1");
+  });
+
+  it("rejects with 401 when the account is gone", async () => {
+    mockedUserQuery.findById.mockResolvedValue(null);
+    const error = await AuthService.getProfile("missing").catch((e) => e);
+    expect(error).toBeInstanceOf(CustomException);
+    expect(error.errorCode).toBe(401);
+  });
+
+  it("rejects with 401 when the account was deactivated", async () => {
+    mockedUserQuery.findById.mockResolvedValue(accountRow({ isActive: false }) as any);
+    const error = await AuthService.getProfile("1").catch((e) => e);
+    expect(error.errorCode).toBe(401);
   });
 });
 
@@ -305,20 +458,30 @@ describe("AuthService.verifyToken", () => {
 
   it("round-trips exactly what login() issued", async () => {
     const passwordHash = await bcrypt.hash("pw", 4);
-    mockedUserQuery.findByEmail.mockResolvedValue({
-      id: "42",
-      name: "A",
-      email: "a@x.com",
-      passwordHash,
-      isActive: true,
-      role: "admin",
-    } as any);
+    const row = accountRow({ id: "42", passwordHash, role: "admin", storeId: null });
+    mockedUserQuery.findByEmail.mockResolvedValue(row as any);
+    mockedUserQuery.recordLogin.mockResolvedValue(row as any);
 
     const { token } = await AuthService.login("a@x.com", "pw");
-    const decoded = AuthService.verifyToken(token);
 
-    // jwt.verify() also returns standard "iat"/"exp" claims — only assert
-    // the payload this service actually put there.
-    expect(decoded).toEqual(expect.objectContaining({ userId: "42", role: "admin" }));
+    // verifyToken returns only the claims this service put there, not iat/exp.
+    expect(AuthService.verifyToken(token)).toEqual({
+      userId: "42",
+      role: "admin",
+      storeId: null,
+      name: "Asha Rao",
+    });
+  });
+
+  it("returns the storeId a token carries", () => {
+    const token = jwt.sign({ userId: "7", role: "staff", storeId: "store-7", name: "Zoe" }, "test-secret", {
+      algorithm: "HS256",
+    });
+    expect(AuthService.verifyToken(token)).toEqual({ userId: "7", role: "staff", storeId: "store-7", name: "Zoe" });
+  });
+
+  it("treats a token issued before storeId existed as having no store", () => {
+    const token = jwt.sign({ userId: "7", role: "staff" }, "test-secret", { algorithm: "HS256" });
+    expect(AuthService.verifyToken(token)).toEqual({ userId: "7", role: "staff", storeId: null, name: null });
   });
 });

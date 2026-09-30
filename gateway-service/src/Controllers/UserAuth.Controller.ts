@@ -33,7 +33,7 @@ import { created, successCode } from "../../commons/Utils/StatusCode.js";
  *           example: "+919876543210"
  *         role:
  *           type: string
- *           enum: [super_admin, admin, staff, driver, customer]
+ *           enum: [super_admin, admin, manager, hr, staff, driver, customer]
  *           example: customer
  *     AuthTokens:
  *       type: object

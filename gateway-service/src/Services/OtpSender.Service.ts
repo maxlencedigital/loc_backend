@@ -1,9 +1,12 @@
 import nodemailer, { Transporter } from "nodemailer";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { serviceUnavailable } from "../../commons/Utils/StatusCode.js";
+import { toCustomException } from "../../commons/Exception/ToCustomException.js";
 
-// Where OTPs go: TransmitSMS, and SMTP via nodemailer. Both optional — unset
-// credentials log the code, which is never returned in an API response.
+// Where OTPs go: TransmitSMS, and email by an HTTPS API (Brevo or Resend) or SMTP.
+// All optional — unset credentials log the code, which is never returned in an
+// API response. The HTTPS API wins when configured: Render's free tier blocks the
+// SMTP ports (25, 465, 587), so SMTP can only ever work locally.
 
 const TRANSMIT_SMS_ENDPOINT = "https://api.transmitsms.com/send-sms.json";
 
@@ -14,8 +17,18 @@ const smsConfigured = () =>
       process.env.TRANSMIT_SMS_FROM_NUMBER
   );
 
-const emailConfigured = () =>
+const smtpConfigured = () =>
   Boolean(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+
+type EmailApiProvider = "brevo" | "resend";
+const emailApiProvider = (): EmailApiProvider | null => {
+  const provider = process.env.EMAIL_API_PROVIDER;
+  return provider === "brevo" || provider === "resend" ? provider : null;
+};
+const emailApiConfigured = () =>
+  Boolean(emailApiProvider() && process.env.EMAIL_API_KEY && process.env.EMAIL_FROM);
+
+const emailConfigured = () => emailApiConfigured() || smtpConfigured();
 
 /** TransmitSMS expects digits only — no leading '+'. */
 const digitsOnly = (value: string) => (value || "").replace(/[^\d]/g, "");
@@ -33,52 +46,56 @@ const logToConsole = (channel: "sms" | "email", to: string, code: string) => {
 };
 
 const sendSms = async (to: string, code: string): Promise<void> => {
-  if (!smsConfigured()) {
-    logToConsole("sms", to, code);
-    return;
-  }
-
-  const body = new URLSearchParams({
-    to: digitsOnly(to),
-    message: `${code} is your LOC verification code. It expires in 5 minutes. Do not share it with anyone.`,
-    from: digitsOnly(process.env.TRANSMIT_SMS_FROM_NUMBER as string),
-  });
-
-  const auth = Buffer.from(
-    `${process.env.TRANSMIT_SMS_API_KEY}:${process.env.TRANSMIT_SMS_API_SECRET}`
-  ).toString("base64");
-
   try {
-    const response = await fetch(TRANSMIT_SMS_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${auth}`,
-      },
-      body,
+    if (!smsConfigured()) {
+      logToConsole("sms", to, code);
+      return;
+    }
+
+    const body = new URLSearchParams({
+      to: digitsOnly(to),
+      message: `${code} is your LOC verification code. It expires in 5 minutes. Do not share it with anyone.`,
+      from: digitsOnly(process.env.TRANSMIT_SMS_FROM_NUMBER as string),
     });
 
-    // Read the body ONCE. A response body is a stream: calling .text() and then
-    // .json() on the same response throws, which would fail every send.
-    const raw = await response.text();
-    let data: { error?: { code?: string; description?: string } };
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      throw new Error(`non-JSON provider response (HTTP ${response.status}): ${raw.slice(0, 200)}`);
-    }
+    const auth = Buffer.from(
+      `${process.env.TRANSMIT_SMS_API_KEY}:${process.env.TRANSMIT_SMS_API_SECRET}`
+    ).toString("base64");
 
-    // TransmitSMS answers 200 even for rejected sends; the verdict is in the
-    // body, so checking response.ok alone would treat failures as successes.
-    if (data?.error?.code !== "SUCCESS") {
-      throw new Error(data?.error?.description || data?.error?.code || "unknown provider error");
+    try {
+      const response = await fetch(TRANSMIT_SMS_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${auth}`,
+        },
+        body,
+      });
+
+      // Read the body ONCE. A response body is a stream: calling .text() and then
+      // .json() on the same response throws, which would fail every send.
+      const raw = await response.text();
+      let data: { error?: { code?: string; description?: string } };
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(`non-JSON provider response (HTTP ${response.status}): ${raw.slice(0, 200)}`);
+      }
+
+      // TransmitSMS answers 200 even for rejected sends; the verdict is in the
+      // body, so checking response.ok alone would treat failures as successes.
+      if (data?.error?.code !== "SUCCESS") {
+        throw new Error(data?.error?.description || data?.error?.code || "unknown provider error");
+      }
+    } catch (error) {
+      console.error(`[OTP][sms] delivery failed for ${to}:`, (error as Error).message);
+      throw new CustomException(
+        "Could not send the verification code right now. Please try again.",
+        serviceUnavailable
+      );
     }
   } catch (error) {
-    console.error(`[OTP][sms] delivery failed for ${to}:`, (error as Error).message);
-    throw new CustomException(
-      "Could not send the verification code right now. Please try again.",
-      serviceUnavailable
-    );
+    throw toCustomException(error);
   }
 };
 
@@ -98,31 +115,87 @@ const getTransporter = (): Transporter => {
   return transporter;
 };
 
-const sendEmail = async (to: string, code: string): Promise<void> => {
-  if (!emailConfigured()) {
-    logToConsole("email", to, code);
-    return;
-  }
+const EMAIL_API_TIMEOUT_MS = 10_000;
 
+const otpEmail = (code: string) => ({
+  subject: "Your LOC verification code",
+  text:
+    `${code} is your LOC verification code. It expires in 5 minutes.\n\n` +
+    `If you did not request this, you can ignore this email.`,
+  html:
+    `<p style="font-size:16px">Your LOC verification code is:</p>` +
+    `<p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>` +
+    `<p style="color:#666">It expires in 5 minutes. If you did not request this, ignore this email.</p>`,
+});
+
+// Sends over HTTPS, which Render's free tier allows. Throws on any non-2xx so the
+// caller reports a real delivery failure instead of a silent success.
+const sendEmailByApi = async (to: string, code: string): Promise<void> => {
+  const provider = emailApiProvider() as EmailApiProvider;
+  const apiKey = process.env.EMAIL_API_KEY as string;
+  const from = process.env.EMAIL_FROM as string;
+  const message = otpEmail(code);
+
+  const request: { url: string; headers: Record<string, string>; body: unknown } =
+    provider === "brevo"
+      ? {
+          url: "https://api.brevo.com/v3/smtp/email",
+          headers: { "api-key": apiKey },
+          body: {
+            sender: { email: from, name: "LOC" },
+            to: [{ email: to }],
+            subject: message.subject,
+            htmlContent: message.html,
+            textContent: message.text,
+          },
+        }
+      : {
+          url: "https://api.resend.com/emails",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: { from: `LOC <${from}>`, to: [to], subject: message.subject, html: message.html, text: message.text },
+        };
+
+  const response = await fetch(request.url, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json", ...request.headers },
+    body: JSON.stringify(request.body),
+    signal: AbortSignal.timeout(EMAIL_API_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 300);
+    throw new Error(`${provider} rejected the email (HTTP ${response.status}): ${detail}`);
+  }
+};
+
+const sendEmail = async (to: string, code: string): Promise<void> => {
   try {
-    await getTransporter().sendMail({
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-      to,
-      subject: "Your LOC verification code",
-      text:
-        `${code} is your LOC verification code. It expires in 5 minutes.\n\n` +
-        `If you did not request this, you can ignore this email.`,
-      html:
-        `<p style="font-size:16px">Your LOC verification code is:</p>` +
-        `<p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>` +
-        `<p style="color:#666">It expires in 5 minutes. If you did not request this, ignore this email.</p>`,
-    });
+    if (!emailConfigured()) {
+      logToConsole("email", to, code);
+      return;
+    }
+
+    try {
+      if (emailApiConfigured()) {
+        await sendEmailByApi(to, code);
+        return;
+      }
+      const message = otpEmail(code);
+      await getTransporter().sendMail({
+        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        to,
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+      });
+    } catch (error) {
+      console.error(`[OTP][email] delivery failed for ${to}:`, (error as Error).message);
+      throw new CustomException(
+        "Could not send the verification code right now. Please try again.",
+        serviceUnavailable
+      );
+    }
   } catch (error) {
-    console.error(`[OTP][email] delivery failed for ${to}:`, (error as Error).message);
-    throw new CustomException(
-      "Could not send the verification code right now. Please try again.",
-      serviceUnavailable
-    );
+    throw toCustomException(error);
   }
 };
 

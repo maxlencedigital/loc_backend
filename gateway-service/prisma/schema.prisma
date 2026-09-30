@@ -28,6 +28,8 @@ datasource db {
 enum UserRole {
   super_admin
   admin
+  manager
+  hr
   staff
   driver
   customer
@@ -74,6 +76,14 @@ model User {
 
   role     UserRole @default(customer)
   isActive Boolean  @default(true)
+
+  /// The store this account works in, carried in its JWT. Deliberately not a
+  /// foreign key: stores live in commerce's schema, which this service never reads.
+  storeId String? @db.Uuid
+
+  lastLoginAt DateTime? @db.Timestamptz(6)
+
+  refreshTokens RefreshToken[]
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -148,4 +158,37 @@ model ActivityLog {
   /// table, which gets slower every day the service stays up.
   @@index([createdAt], map: "idx_activity_created_at")
   @@map("activity_logs")
+}
+
+/// One row per refresh token ever issued. The token itself is 256 random bits handed to
+/// the client once; only its SHA-256 is stored, so a database leak yields nothing usable.
+/// Tokens rotate on every use, and a family is one sign-in's chain of rotations.
+model RefreshToken {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Every token descended from one sign-in. Presenting an already-rotated token
+  /// revokes the whole family: that is how a stolen token is detected.
+  familyId String @db.Uuid
+
+  tokenHash String @unique @db.Char(64)
+
+  /// Sliding: each rotation issues a fresh window, never past sessionExpiresAt.
+  expiresAt DateTime @db.Timestamptz(6)
+
+  /// Absolute cap on the sign-in, copied down the family. Rotation cannot extend it.
+  sessionExpiresAt DateTime @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  revokedAt     DateTime? @db.Timestamptz(6)
+  /// rotated | logout | logout_all | reuse_detected | password_reset | deactivated
+  revokedReason String?   @db.VarChar(30)
+
+  @@index([userId], map: "idx_refresh_user")
+  @@index([familyId], map: "idx_refresh_family")
+  @@index([expiresAt], map: "idx_refresh_expires")
+  @@map("refresh_tokens")
 }

@@ -48,12 +48,12 @@ describe("verifyToken", () => {
   });
 
   it("attaches the decoded identity and calls next() on a valid token", () => {
-    mockedAuthService.verifyToken.mockReturnValue({ userId: "u1", role: "admin" });
+    mockedAuthService.verifyToken.mockReturnValue({ userId: "u1", role: "admin", storeId: "store-1" });
     const { req, res, next } = mockReqRes({ Authorization: "Bearer good-token" });
 
     verifyToken(req, res, next);
 
-    expect(req.user).toEqual({ id: "u1", role: "admin" });
+    expect(req.user).toEqual({ id: "u1", role: "admin", storeId: "store-1" });
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
   });
@@ -69,7 +69,7 @@ describe("requireRole", () => {
 
   it("rejects an authenticated user without the required role", () => {
     const { req, res, next } = mockReqRes();
-    req.user = { id: "u1", role: "customer" };
+    req.user = { id: "u1", role: "customer", storeId: null };
     requireRole("admin")(req, res, next);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe("requireRole", () => {
 
   it("allows a user whose role is in the allowed list", () => {
     const { req, res, next } = mockReqRes();
-    req.user = { id: "u1", role: "admin" };
+    req.user = { id: "u1", role: "admin", storeId: null };
     requireRole("admin", "staff")(req, res, next);
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
@@ -85,7 +85,7 @@ describe("requireRole", () => {
 
   it("lets a super_admin through even when super_admin isn't in the allowed list", () => {
     const { req, res, next } = mockReqRes();
-    req.user = { id: "u1", role: "super_admin" };
+    req.user = { id: "u1", role: "super_admin", storeId: null };
     requireRole("driver")(req, res, next);
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();

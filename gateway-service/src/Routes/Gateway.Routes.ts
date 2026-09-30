@@ -9,6 +9,8 @@ import { SecurityController } from "../Controllers/Security.Controller.js";
 import { verifyToken, requireRole } from "../Middleware/Auth.js";
 import { buildServiceProxy } from "../Middleware/ProxyRoutes.js";
 import { authLimiter } from "../Middleware/RateLimiter.js";
+import usersRoutes from "./Users.Routes.js";
+import generatedRoutes from "./Generated.Routes.js";
 
 const router = express.Router();
 
@@ -77,6 +79,12 @@ router.post(
   requireRole("admin", "staff"),
   NotificationController.send
 );
+
+// Hand-written and mounted first, so these win over the scaffolded routes they replace.
+router.use(usersRoutes);
+
+// Role-guarded contract scaffolds generated from the API catalogue.
+router.use(generatedRoutes);
 
 // --------------------- Routing to the module services ---------------------
 // Every request below is authenticated once, here, before it reaches a service.

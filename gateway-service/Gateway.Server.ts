@@ -1,10 +1,11 @@
-import "dotenv/config";
+import "./commons/Config/LoadEnv.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { connectDB } from "./src/DB/Prisma.Connection.Db.js";
 import router from "./src/Routes/Gateway.Routes.js";
+import publicRoutes from "./src/Routes/Public.Routes.js";
 import { activityLogger } from "./src/Middleware/ActivityLogger.js";
 import { apiLimiter } from "./src/Middleware/RateLimiter.js";
 import setupSwagger from "./src/Swagger/Swagger.js";
@@ -48,6 +49,9 @@ const corsOrigin = process.env.CORS_ORIGIN as string;
 app.use(cors({ origin: corsOrigin === "*" ? "*" : corsOrigin.split(",") }));
 
 app.use(helmet());
+// Before the body parser on purpose: a webhook signature is computed over the exact
+// bytes, so the public routes must see the request stream untouched.
+app.use(publicRoutes);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));

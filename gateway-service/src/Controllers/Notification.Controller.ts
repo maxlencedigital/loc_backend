@@ -10,7 +10,7 @@ const ALLOWED_CHANNELS = ["sms", "email", "whatsapp", "push"];
  * /notifications/send:
  *   post:
  *     summary: Send a notification through a given channel (admin/staff only)
- *     tags: [Notifications]
+ *     tags: ["Admin - Campaigns & Notifications"]
  *     requestBody:
  *       required: true
  *       content:

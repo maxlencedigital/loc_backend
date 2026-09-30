@@ -6,7 +6,7 @@ import { handleNotImplementedResponse } from "../../commons/Response/Response.js
  * /security/backup-status:
  *   get:
  *     summary: Get the status of the twice-daily database backup job (admin only)
- *     tags: [Security]
+ *     tags: ["Admin - Security & Audit"]
  *     responses:
  *       200:
  *         description: "Scaffolded per API contract — not yet implemented. Once wired up, returns: { lastBackupAt: string (date-time), status: \"success\"|\"failed\", locations: string[] }."

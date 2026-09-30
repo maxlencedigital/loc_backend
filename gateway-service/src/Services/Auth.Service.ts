@@ -10,27 +10,13 @@ import { OAuthService } from "./OAuth.Service.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { badRequest, conflict, forbidden, unauthorized } from "../../commons/Utils/StatusCode.js";
 import { UserRole, OAuthProvider } from "../Models/User/User.Interface.js";
+import { toCustomException } from "../../commons/Exception/ToCustomException.js";
+import { MIN_PASSWORD_LENGTH, SALT_ROUNDS } from "./Password.js";
+import { toDashboardUser } from "../Models/User/DashboardUser.js";
+import { JWT_ALGORITHM, getJwtSecret } from "./Token.js";
+import { SessionService } from "./Session.Service.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LENGTH = 8;
-
-// OWASP guidance is a work factor of 10-12; 12 is the safer default and still
-// within acceptable per-login latency.
-const SALT_ROUNDS = 12;
-
-// Pinned on both sign and verify, never left to the library's inference: an
-// unconstrained verify is where JWT "alg confusion" bugs start.
-const JWT_ALGORITHM = "HS256";
-
-// No fallback secret: a service without JWT_SECRET must fail loudly, not sign
-// tokens with a value sitting in source control.
-const getJwtSecret = (): string => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new CustomException("Server misconfigured: JWT secret missing.", 500);
-  }
-  return secret;
-};
 
 const validateNewUserInput = (input: {
   name: string;
@@ -100,11 +86,15 @@ const register = async (input: {
   phoneNumber: string;
   password: string;
 }) => {
-  validateNewUserInput(input);
-  return createUserRecord({ ...input, role: "customer" });
+  try {
+    validateNewUserInput(input);
+    return await createUserRecord({ ...input, role: "customer" });
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
-const PRIVILEGED_ROLES_CREATABLE_VIA_API: UserRole[] = ["admin", "staff", "driver"];
+const PRIVILEGED_ROLES_CREATABLE_VIA_API: UserRole[] = ["admin", "manager", "hr", "staff", "driver"];
 
 // super_admin-only. Cannot create another super_admin: that tier is seeded
 // only by a script needing deploy access, not just an API token.
@@ -115,45 +105,71 @@ const createPrivilegedUser = async (input: {
   password: string;
   role: UserRole;
 }) => {
-  if (!PRIVILEGED_ROLES_CREATABLE_VIA_API.includes(input.role)) {
-    throw new CustomException(
-      `role must be one of: ${PRIVILEGED_ROLES_CREATABLE_VIA_API.join(", ")}.`,
-      badRequest
-    );
+  try {
+    if (!PRIVILEGED_ROLES_CREATABLE_VIA_API.includes(input.role)) {
+      throw new CustomException(
+        `role must be one of: ${PRIVILEGED_ROLES_CREATABLE_VIA_API.join(", ")}.`,
+        badRequest
+      );
+    }
+    validateNewUserInput(input);
+    return await createUserRecord(input);
+  } catch (error) {
+    throw toCustomException(error);
   }
-  validateNewUserInput(input);
-  return createUserRecord(input);
 };
 
 const login = async (email: string, password: string) => {
-  if (!email || !password) {
-    throw new CustomException("Email and password are required.", badRequest);
+  try {
+    if (!email || !password) {
+      throw new CustomException("Email and password are required.", badRequest);
+    }
+    const user = await UserQuery.findByEmail(email);
+    // Covers social-login accounts, which have no password: bcrypt.compare
+    // against null would throw a 500 that reveals the account exists.
+    if (!user || !user.isActive || !user.passwordHash) {
+      throw new CustomException("Invalid email or password.", unauthorized);
+    }
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      throw new CustomException("Invalid email or password.", unauthorized);
+    }
+    const loggedIn = await UserQuery.recordLogin(user.id);
+    return { ...(await SessionService.issue(loggedIn)), user: toDashboardUser(loggedIn) };
+  } catch (error) {
+    throw toCustomException(error);
   }
-  const user = await UserQuery.findByEmail(email);
-  // Covers social-login accounts, which have no password: bcrypt.compare
-  // against null would throw a 500 that reveals the account exists.
-  if (!user || !user.isActive || !user.passwordHash) {
-    throw new CustomException("Invalid email or password.", unauthorized);
-  }
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!isMatch) {
-    throw new CustomException("Invalid email or password.", unauthorized);
-  }
-  const token = jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), {
-    algorithm: JWT_ALGORITHM,
-    expiresIn: "12h",
-  });
-  return {
-    token,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
-  };
 };
 
-const verifyToken = (token: string): { userId: string; role: UserRole } => {
+// Fresh from the database: the token alone cannot show a deactivation or a new store.
+const getProfile = async (userId: string) => {
   try {
-    return jwt.verify(token, getJwtSecret(), { algorithms: [JWT_ALGORITHM] }) as {
+    const user = await UserQuery.findById(userId);
+    if (!user || !user.isActive) {
+      throw new CustomException("Your account is no longer active.", unauthorized);
+    }
+    return toDashboardUser(user);
+  } catch (error) {
+    throw toCustomException(error);
+  }
+};
+
+const verifyToken = (
+  token: string
+): { userId: string; role: UserRole; storeId: string | null; name: string | null } => {
+  try {
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: [JWT_ALGORITHM] }) as {
       userId: string;
       role: UserRole;
+      storeId?: string | null;
+      name?: string;
+    };
+    // Tokens issued before storeId existed carry none.
+    return {
+      userId: decoded.userId,
+      role: decoded.role,
+      storeId: decoded.storeId ?? null,
+      name: decoded.name ?? null,
     };
   } catch {
     throw new CustomException("Invalid or expired token.", unauthorized);
@@ -162,28 +178,23 @@ const verifyToken = (token: string): { userId: string; role: UserRole } => {
 
 // ---------------- Shared helpers for the OTP / OAuth flows ----------------
 
-const issueTokenFor = (user: {
+const issueTokenFor = async (user: {
   id: string;
   name: string;
   email: string;
   phoneNumber: string | null;
   role: UserRole;
-}) => {
-  const token = jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), {
-    algorithm: JWT_ALGORITHM,
-    expiresIn: "12h",
-  });
-  return {
-    token,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phoneNumber: user.phoneNumber,
-      role: user.role,
-    },
-  };
-};
+  storeId: string | null;
+}) => ({
+  ...(await SessionService.issue(user)),
+  user: {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
+    role: user.role,
+  },
+});
 
 // ---------- Registration with phone verified by OTP (3 steps) ----------
 // Mirrors the sign-up form: the number is proven mid-form, before the email
@@ -194,35 +205,43 @@ const issueTokenFor = (user: {
  * all the form has at this point.
  */
 const registerSendOtp = async (phoneNumber: string) => {
-  if (!phoneNumber?.trim()) {
-    throw new CustomException("A phone number is required.", badRequest);
+  try {
+    if (!phoneNumber?.trim()) {
+      throw new CustomException("A phone number is required.", badRequest);
+    }
+    const normalised = phoneNumber.trim();
+
+    // Fail before spending an SMS on a number that can't be registered.
+    if (await UserQuery.findByPhoneNumber(normalised)) {
+      throw new CustomException("An account with this phone number already exists.", conflict);
+    }
+
+    const { challenge, code } = await OtpService.issue({
+      purpose: "register",
+      destination: normalised,
+    });
+
+    await OtpSender.sendSms(normalised, code);
+    return challenge;
+  } catch (error) {
+    throw toCustomException(error);
   }
-  const normalised = phoneNumber.trim();
-
-  // Fail before spending an SMS on a number that can't be registered.
-  if (await UserQuery.findByPhoneNumber(normalised)) {
-    throw new CustomException("An account with this phone number already exists.", conflict);
-  }
-
-  const { challenge, code } = await OtpService.issue({
-    purpose: "register",
-    destination: normalised,
-  });
-
-  await OtpSender.sendSms(normalised, code);
-  return challenge;
 };
 
 // Step 2 — check the code. Proves the number and nothing more; no account yet.
 // A wrong code returns `attemptsRemaining` so the form can count down.
 const registerVerifyOtp = async (verificationId: string, otp: string) => {
-  const challenge = await OtpService.verifyCode(verificationId, otp, "register");
-  return {
-    verified: true,
-    phoneNumber: challenge.destination,
-    // The proof stays good this long, so the user can finish the form.
-    completionWindowSeconds: OtpService.POST_VERIFY_WINDOW_SECONDS,
-  };
+  try {
+    const challenge = await OtpService.verifyCode(verificationId, otp, "register");
+    return {
+      verified: true,
+      phoneNumber: challenge.destination,
+      // The proof stays good this long, so the user can finish the form.
+      completionWindowSeconds: OtpService.POST_VERIFY_WINDOW_SECONDS,
+    };
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
 // Step 3 — create the account. The phone number is read off the verified
@@ -233,56 +252,60 @@ const registerComplete = async (input: {
   email: string;
   password: string;
 }) => {
-  // Burns the challenge, so one verification can't create two accounts.
-  const challenge = await OtpService.consumeVerified(input.verificationId, "register");
-  const phoneNumber = challenge.destination;
-
-  validateNewUserInput({
-    name: input.name,
-    email: input.email,
-    phoneNumber,
-    password: input.password,
-  });
-  const email = input.email.trim().toLowerCase();
-
-  // Re-checked here: the gap between sending the code and submitting the form
-  // is long enough for someone else to take this email or number.
-  if (await UserQuery.findByEmail(email)) {
-    throw new CustomException("An account with this email already exists.", conflict);
-  }
-  if (await UserQuery.findByPhoneNumber(phoneNumber)) {
-    throw new CustomException("An account with this phone number already exists.", conflict);
-  }
-
-  const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
-
-  let user;
   try {
-    user = await UserQuery.create({
-      name: input.name.trim(),
-      email,
+    // Burns the challenge, so one verification can't create two accounts.
+    const challenge = await OtpService.consumeVerified(input.verificationId, "register");
+    const phoneNumber = challenge.destination;
+
+    validateNewUserInput({
+      name: input.name,
+      email: input.email,
       phoneNumber,
-      passwordHash,
-      // The point of the whole flow: this number was proven, so record it.
-      isPhoneVerified: true,
-      oauthProvider: null,
-      oauthSubject: null,
-      role: "customer",
-      isActive: true,
+      password: input.password,
     });
-  } catch (error: unknown) {
-    // The re-checks above narrow the race but cannot close it, so report the
-    // constraint's rejection as the same 409 rather than a 500 at final submit.
-    if (isUniqueViolation(error, "email")) {
+    const email = input.email.trim().toLowerCase();
+
+    // Re-checked here: the gap between sending the code and submitting the form
+    // is long enough for someone else to take this email or number.
+    if (await UserQuery.findByEmail(email)) {
       throw new CustomException("An account with this email already exists.", conflict);
     }
-    if (isUniqueViolation(error, "phoneNumber")) {
+    if (await UserQuery.findByPhoneNumber(phoneNumber)) {
       throw new CustomException("An account with this phone number already exists.", conflict);
     }
-    throw error;
-  }
 
-  return issueTokenFor(user);
+    const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
+
+    let user;
+    try {
+      user = await UserQuery.create({
+        name: input.name.trim(),
+        email,
+        phoneNumber,
+        passwordHash,
+        // The point of the whole flow: this number was proven, so record it.
+        isPhoneVerified: true,
+        oauthProvider: null,
+        oauthSubject: null,
+        role: "customer",
+        isActive: true,
+      });
+    } catch (error: unknown) {
+      // The re-checks above narrow the race but cannot close it, so report the
+      // constraint's rejection as the same 409 rather than a 500 at final submit.
+      if (isUniqueViolation(error, "email")) {
+        throw new CustomException("An account with this email already exists.", conflict);
+      }
+      if (isUniqueViolation(error, "phoneNumber")) {
+        throw new CustomException("An account with this phone number already exists.", conflict);
+      }
+      throw error;
+    }
+
+    return await issueTokenFor(user);
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
 // -------------------- Login by phone + OTP (2 steps) --------------------
@@ -290,46 +313,54 @@ const registerComplete = async (input: {
 // Always reports success: a 404 would turn this into a way to test which
 // numbers are registered. A code is only sent when an account exists.
 const loginOtpRequest = async (phoneNumber: string) => {
-  if (!phoneNumber?.trim()) {
-    throw new CustomException("A phone number is required.", badRequest);
-  }
-  const normalised = phoneNumber.trim();
-  const user = await UserQuery.findByPhoneNumber(normalised);
+  try {
+    if (!phoneNumber?.trim()) {
+      throw new CustomException("A phone number is required.", badRequest);
+    }
+    const normalised = phoneNumber.trim();
+    const user = await UserQuery.findByPhoneNumber(normalised);
 
-  if (!user || !user.isActive) {
-    // Same response shape and timing-insensitive cost as the real path.
-    return {
-      verificationId: crypto.randomUUID(),
-      expiresInSeconds: OtpService.OTP_TTL_SECONDS,
-      resendAvailableInSeconds: OtpService.RESEND_COOLDOWN_SECONDS,
-    };
-  }
+    if (!user || !user.isActive) {
+      // Same response shape and timing-insensitive cost as the real path.
+      return {
+        verificationId: crypto.randomUUID(),
+        expiresInSeconds: OtpService.OTP_TTL_SECONDS,
+        resendAvailableInSeconds: OtpService.RESEND_COOLDOWN_SECONDS,
+      };
+    }
 
-  const { challenge, code } = await OtpService.issue({
-    purpose: "login",
-    destination: normalised,
-    userId: user.id,
-  });
-  // Swallowed deliberately: a provider outage surfacing here would make known
-  // accounts fail while unknown ones succeed — an enumeration oracle.
-  await OtpSender.sendSms(normalised, code).catch((error) =>
-    console.error("[OTP] login code delivery failed:", error?.message)
-  );
-  return challenge;
+    const { challenge, code } = await OtpService.issue({
+      purpose: "login",
+      destination: normalised,
+      userId: user.id,
+    });
+    // Swallowed deliberately: a provider outage surfacing here would make known
+    // accounts fail while unknown ones succeed — an enumeration oracle.
+    await OtpSender.sendSms(normalised, code).catch((error) =>
+      console.error("[OTP] login code delivery failed:", error?.message)
+    );
+    return challenge;
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
 const loginOtpVerify = async (verificationId: string, otp: string) => {
-  // Login has no second step, so the challenge is verified and spent at once.
-  const challenge = await OtpService.verifyCode(verificationId, otp, "login");
-  await OtpChallengeQuery.markConsumed(challenge.id);
-  if (!challenge.userId) {
-    throw new CustomException("That code is invalid or has expired.", badRequest);
+  try {
+    // Login has no second step, so the challenge is verified and spent at once.
+    const challenge = await OtpService.verifyCode(verificationId, otp, "login");
+    await OtpChallengeQuery.markConsumed(challenge.id);
+    if (!challenge.userId) {
+      throw new CustomException("That code is invalid or has expired.", badRequest);
+    }
+    const user = await UserQuery.findById(challenge.userId);
+    if (!user || !user.isActive) {
+      throw new CustomException("That code is invalid or has expired.", badRequest);
+    }
+    return await issueTokenFor(user);
+  } catch (error) {
+    throw toCustomException(error);
   }
-  const user = await UserQuery.findById(challenge.userId);
-  if (!user || !user.isActive) {
-    throw new CustomException("That code is invalid or has expired.", badRequest);
-  }
-  return issueTokenFor(user);
 };
 
 // ------------------------------ Social login ------------------------------
@@ -337,82 +368,90 @@ const loginOtpVerify = async (verificationId: string, otp: string) => {
 // The token is verified server-side and the identity read from the result,
 // never the request body. Matched on provider `sub` first, then verified email.
 const loginOAuth = async (provider: OAuthProvider, token: string) => {
-  const identity = await OAuthService.verify(provider, token);
+  try {
+    const identity = await OAuthService.verify(provider, token);
 
-  let user = await UserQuery.findByOAuthIdentity(identity.provider, identity.subject);
-  let isNewUser = false;
+    let user = await UserQuery.findByOAuthIdentity(identity.provider, identity.subject);
+    let isNewUser = false;
 
-  if (!user) {
-    const byEmail = await UserQuery.findByEmail(identity.email);
-    if (byEmail) {
-      // Only link on a provider-VERIFIED email: otherwise someone could claim a
-      // victim's address at the provider and inherit their account.
-      if (!identity.emailVerified) {
-        throw new CustomException(
-          "That provider account's email is not verified, so it can't be linked to an existing account.",
-          unauthorized
-        );
+    if (!user) {
+      const byEmail = await UserQuery.findByEmail(identity.email);
+      if (byEmail) {
+        // Only link on a provider-VERIFIED email: otherwise someone could claim a
+        // victim's address at the provider and inherit their account.
+        if (!identity.emailVerified) {
+          throw new CustomException(
+            "That provider account's email is not verified, so it can't be linked to an existing account.",
+            unauthorized
+          );
+        }
+        await UserQuery.linkOAuthIdentity(byEmail.id, identity.provider, identity.subject);
+        user = byEmail;
+      } else {
+        user = await UserQuery.create({
+          name: identity.name || identity.email.split("@")[0],
+          email: identity.email,
+          // No password and no phone: social accounts have neither.
+          passwordHash: null,
+          phoneNumber: null,
+          isPhoneVerified: false,
+          oauthProvider: identity.provider,
+          oauthSubject: identity.subject,
+          role: "customer",
+          isActive: true,
+        });
+        isNewUser = true;
       }
-      await UserQuery.linkOAuthIdentity(byEmail.id, identity.provider, identity.subject);
-      user = byEmail;
-    } else {
-      user = await UserQuery.create({
-        name: identity.name || identity.email.split("@")[0],
-        email: identity.email,
-        // No password and no phone: social accounts have neither.
-        passwordHash: null,
-        phoneNumber: null,
-        isPhoneVerified: false,
-        oauthProvider: identity.provider,
-        oauthSubject: identity.subject,
-        role: "customer",
-        isActive: true,
-      });
-      isNewUser = true;
     }
-  }
 
-  if (!user.isActive) {
-    throw new CustomException("This account has been deactivated.", forbidden);
-  }
+    if (!user.isActive) {
+      throw new CustomException("This account has been deactivated.", forbidden);
+    }
 
-  return {
-    ...issueTokenFor(user),
-    isNewUser,
-    // Delivery needs a phone number, and no provider supplies one — the app
-    // uses this to decide whether to prompt for it.
-    profileComplete: Boolean(user.phoneNumber && user.isPhoneVerified),
-  };
+    return {
+      ...(await issueTokenFor(user)),
+      isNewUser,
+      // Delivery needs a phone number, and no provider supplies one — the app
+      // uses this to decide whether to prompt for it.
+      profileComplete: Boolean(user.phoneNumber && user.isPhoneVerified),
+    };
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
 // ---------------- Forgotten password, by email OTP (2 steps) ----------------
 
 /** Always reports success — same anti-enumeration reasoning as login-by-OTP. */
 const passwordForgot = async (email: string) => {
-  if (!email || !EMAIL_PATTERN.test(email.trim())) {
-    throw new CustomException("A valid email address is required.", badRequest);
-  }
-  const normalised = email.trim().toLowerCase();
-  const user = await UserQuery.findByEmail(normalised);
+  try {
+    if (!email || !EMAIL_PATTERN.test(email.trim())) {
+      throw new CustomException("A valid email address is required.", badRequest);
+    }
+    const normalised = email.trim().toLowerCase();
+    const user = await UserQuery.findByEmail(normalised);
 
-  if (!user || !user.isActive) {
-    return {
-      verificationId: crypto.randomUUID(),
-      expiresInSeconds: OtpService.OTP_TTL_SECONDS,
-      resendAvailableInSeconds: OtpService.RESEND_COOLDOWN_SECONDS,
-    };
-  }
+    if (!user || !user.isActive) {
+      return {
+        verificationId: crypto.randomUUID(),
+        expiresInSeconds: OtpService.OTP_TTL_SECONDS,
+        resendAvailableInSeconds: OtpService.RESEND_COOLDOWN_SECONDS,
+      };
+    }
 
-  const { challenge, code } = await OtpService.issue({
-    purpose: "password_reset",
-    destination: normalised,
-    userId: user.id,
-  });
-  // Swallowed for the same anti-enumeration reason as login-by-OTP above.
-  await OtpSender.sendEmail(normalised, code).catch((error) =>
-    console.error("[OTP] reset code delivery failed:", error?.message)
-  );
-  return challenge;
+    const { challenge, code } = await OtpService.issue({
+      purpose: "password_reset",
+      destination: normalised,
+      userId: user.id,
+    });
+    // Swallowed for the same anti-enumeration reason as login-by-OTP above.
+    await OtpSender.sendEmail(normalised, code).catch((error) =>
+      console.error("[OTP] reset code delivery failed:", error?.message)
+    );
+    return challenge;
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
 /**
@@ -420,36 +459,42 @@ const passwordForgot = async (email: string) => {
  * a reusable password-change token.
  */
 const passwordReset = async (verificationId: string, otp: string, newPassword: string) => {
-  if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
-    throw new CustomException(
-      `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
-      badRequest
-    );
-  }
+  try {
+    if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new CustomException(
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+        badRequest
+      );
+    }
 
-  // Verified and spent in one call, so a checked code is never left
-  // outstanding as a reusable password-change token.
-  const challenge = await OtpService.verifyCode(verificationId, otp, "password_reset");
-  await OtpChallengeQuery.markConsumed(challenge.id);
-  if (!challenge.userId) {
-    throw new CustomException("That code is invalid or has expired.", badRequest);
-  }
-  const user = await UserQuery.findById(challenge.userId);
-  if (!user || !user.isActive) {
-    throw new CustomException("That code is invalid or has expired.", badRequest);
-  }
+    // Verified and spent in one call, so a checked code is never left
+    // outstanding as a reusable password-change token.
+    const challenge = await OtpService.verifyCode(verificationId, otp, "password_reset");
+    await OtpChallengeQuery.markConsumed(challenge.id);
+    if (!challenge.userId) {
+      throw new CustomException("That code is invalid or has expired.", badRequest);
+    }
+    const user = await UserQuery.findById(challenge.userId);
+    if (!user || !user.isActive) {
+      throw new CustomException("That code is invalid or has expired.", badRequest);
+    }
 
-  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  await UserQuery.setPassword(user.id, passwordHash);
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await UserQuery.setPassword(user.id, passwordHash);
 
-  // Existing sessions are NOT revoked: these JWTs are stateless, so a token
-  // stolen before the reset stays valid for up to 12h. Needs a token version.
-  return { message: "Password updated. Please sign in with your new password." };
+    // Every refresh token dies with the old password; an access token already issued
+    // lives out its few minutes.
+    await SessionService.revokeAllFor(user.id, "password_reset");
+    return { message: "Password updated. Please sign in with your new password." };
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
 export const AuthService = {
   register,
   login,
+  getProfile,
   verifyToken,
   createPrivilegedUser,
   registerSendOtp,

@@ -6,7 +6,7 @@ import { unauthorized, forbidden } from "../../commons/Utils/StatusCode.js";
 import { UserRole } from "../Models/User/User.Interface.js";
 
 export interface AuthenticatedRequest extends Request {
-  user?: { id: string; role: UserRole };
+  user?: { id: string; role: UserRole; storeId: string | null; name?: string | null };
 }
 
 // Every request is authenticated exactly once, here. Downstream services trust
@@ -22,7 +22,7 @@ const verifyToken = (req: AuthenticatedRequest, res: Response, next: NextFunctio
     }
     const token = authHeader.slice(7);
     const decoded = AuthService.verifyToken(token);
-    req.user = { id: decoded.userId, role: decoded.role };
+    req.user = { id: decoded.userId, role: decoded.role, storeId: decoded.storeId, name: decoded.name };
     next();
   } catch (error) {
     return handleErrorResponse(error, res);

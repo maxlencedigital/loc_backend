@@ -8,7 +8,7 @@ import { successCode } from "../../commons/Utils/StatusCode.js";
  * /audit/logs:
  *   get:
  *     summary: Search the activity log (admin only)
- *     tags: [Security]
+ *     tags: ["Admin - Security & Audit"]
  *     security:
  *       - BearerAuth: []
  *     parameters:

@@ -4,6 +4,7 @@ import { OtpChallengeQuery } from "../Queries/OtpChallenge.Query.js";
 import { IOtpChallenge, OtpPurpose } from "../Models/OtpChallenge/OtpChallenge.Interface.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { badRequest, tooManyRequests } from "../../commons/Utils/StatusCode.js";
+import { toCustomException } from "../../commons/Exception/ToCustomException.js";
 
 const OTP_LENGTH = 6;
 const OTP_TTL_SECONDS = 5 * 60;
@@ -58,29 +59,33 @@ const issue = async (input: {
   destination: string;
   userId?: string;
 }): Promise<{ challenge: OtpChallengeResponse; code: string }> => {
-  await assertCanIssue(input.destination, input.purpose);
+  try {
+    await assertCanIssue(input.destination, input.purpose);
 
-  const code = generateCode();
-  const otpHash = await bcrypt.hash(code, OTP_HASH_ROUNDS);
-  const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000);
+    const code = generateCode();
+    const otpHash = await bcrypt.hash(code, OTP_HASH_ROUNDS);
+    const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000);
 
-  const created = await OtpChallengeQuery.create({
-    purpose: input.purpose,
-    destination: input.destination,
-    otpHash,
-    userId: input.userId ?? null,
-    expiresAt,
-  });
+    const created = await OtpChallengeQuery.create({
+      purpose: input.purpose,
+      destination: input.destination,
+      otpHash,
+      userId: input.userId ?? null,
+      expiresAt,
+    });
 
-  return {
-    // The caller sends `code`; it is never put in an API response.
-    code,
-    challenge: {
-      verificationId: created.id,
-      expiresInSeconds: OTP_TTL_SECONDS,
-      resendAvailableInSeconds: RESEND_COOLDOWN_SECONDS,
-    },
-  };
+    return {
+      // The caller sends `code`; it is never put in an API response.
+      code,
+      challenge: {
+        verificationId: created.id,
+        expiresInSeconds: OTP_TTL_SECONDS,
+        resendAvailableInSeconds: RESEND_COOLDOWN_SECONDS,
+      },
+    };
+  } catch (error) {
+    throw toCustomException(error);
+  }
 };
 
 // Checks the code and marks the challenge verified — it does NOT spend it,
@@ -90,43 +95,47 @@ const verifyCode = async (
   code: string,
   expectedPurpose: OtpPurpose
 ): Promise<IOtpChallenge> => {
-  // One message for every non-attempt failure: distinguishing "wrong code"
-  // from "expired" from "no such challenge" tells an attacker what to work on.
-  const invalid = (attemptsRemaining?: number) =>
-    new CustomException(
-      "That code is invalid or has expired.",
-      badRequest,
-      attemptsRemaining === undefined ? undefined : { attemptsRemaining }
+  try {
+    // One message for every non-attempt failure: distinguishing "wrong code"
+    // from "expired" from "no such challenge" tells an attacker what to work on.
+    const invalid = (attemptsRemaining?: number) =>
+      new CustomException(
+        "That code is invalid or has expired.",
+        badRequest,
+        attemptsRemaining === undefined ? undefined : { attemptsRemaining }
+      );
+
+    if (!verificationId || !code) throw invalid();
+
+    const challenge = await OtpChallengeQuery.findById(verificationId);
+    if (!challenge) throw invalid();
+    if (challenge.purpose !== expectedPurpose) throw invalid();
+    if (challenge.consumedAt) throw invalid();
+    if (challenge.expiresAt.getTime() < Date.now()) throw invalid();
+
+    if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
+      throw new CustomException(
+        "Too many incorrect attempts. Request a new code.",
+        tooManyRequests,
+        { attemptsRemaining: 0 }
+      );
+    }
+
+    const matches = await bcrypt.compare(code, challenge.otpHash);
+    if (!matches) {
+      // Counted before returning, so a wrong guess always costs an attempt.
+      await OtpChallengeQuery.recordAttempt(verificationId);
+      throw invalid(Math.max(0, MAX_VERIFY_ATTEMPTS - (challenge.attempts + 1)));
+    }
+
+    await OtpChallengeQuery.markVerified(
+      verificationId,
+      new Date(Date.now() + POST_VERIFY_WINDOW_SECONDS * 1000)
     );
-
-  if (!verificationId || !code) throw invalid();
-
-  const challenge = await OtpChallengeQuery.findById(verificationId);
-  if (!challenge) throw invalid();
-  if (challenge.purpose !== expectedPurpose) throw invalid();
-  if (challenge.consumedAt) throw invalid();
-  if (challenge.expiresAt.getTime() < Date.now()) throw invalid();
-
-  if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
-    throw new CustomException(
-      "Too many incorrect attempts. Request a new code.",
-      tooManyRequests,
-      { attemptsRemaining: 0 }
-    );
+    return challenge;
+  } catch (error) {
+    throw toCustomException(error);
   }
-
-  const matches = await bcrypt.compare(code, challenge.otpHash);
-  if (!matches) {
-    // Counted before returning, so a wrong guess always costs an attempt.
-    await OtpChallengeQuery.recordAttempt(verificationId);
-    throw invalid(Math.max(0, MAX_VERIFY_ATTEMPTS - (challenge.attempts + 1)));
-  }
-
-  await OtpChallengeQuery.markVerified(
-    verificationId,
-    new Date(Date.now() + POST_VERIFY_WINDOW_SECONDS * 1000)
-  );
-  return challenge;
 };
 
 // Loads an already-verified challenge and burns it. Re-read from the database
@@ -135,23 +144,27 @@ const consumeVerified = async (
   verificationId: string,
   expectedPurpose: OtpPurpose
 ): Promise<IOtpChallenge> => {
-  const notVerified = () =>
-    new CustomException("Verify your phone number before continuing.", badRequest);
+  try {
+    const notVerified = () =>
+      new CustomException("Verify your phone number before continuing.", badRequest);
 
-  if (!verificationId) throw notVerified();
+    if (!verificationId) throw notVerified();
 
-  const challenge = await OtpChallengeQuery.findById(verificationId);
-  if (!challenge) throw notVerified();
-  if (challenge.purpose !== expectedPurpose) throw notVerified();
-  if (!challenge.verifiedAt) throw notVerified();
-  // Already used to create an account — a second attempt must not work.
-  if (challenge.consumedAt) throw notVerified();
-  if (challenge.expiresAt.getTime() < Date.now()) {
-    throw new CustomException("Your verification expired. Please request a new code.", badRequest);
+    const challenge = await OtpChallengeQuery.findById(verificationId);
+    if (!challenge) throw notVerified();
+    if (challenge.purpose !== expectedPurpose) throw notVerified();
+    if (!challenge.verifiedAt) throw notVerified();
+    // Already used to create an account — a second attempt must not work.
+    if (challenge.consumedAt) throw notVerified();
+    if (challenge.expiresAt.getTime() < Date.now()) {
+      throw new CustomException("Your verification expired. Please request a new code.", badRequest);
+    }
+
+    await OtpChallengeQuery.markConsumed(verificationId);
+    return challenge;
+  } catch (error) {
+    throw toCustomException(error);
   }
-
-  await OtpChallengeQuery.markConsumed(verificationId);
-  return challenge;
 };
 
 export const OtpService = {

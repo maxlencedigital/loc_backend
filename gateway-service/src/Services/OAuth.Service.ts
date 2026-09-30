@@ -1,6 +1,7 @@
 import { CustomException } from "../../commons/Exception/CustomException.js";
 import { badRequest, serverError, unauthorized } from "../../commons/Utils/StatusCode.js";
 import { OAuthProvider } from "../Models/User/User.Interface.js";
+import { toCustomException } from "../../commons/Exception/ToCustomException.js";
 
 // Verifies a provider token SERVER-SIDE. The client sends only a token: a
 // client-supplied email would let anyone sign in as any address.
@@ -113,17 +114,21 @@ const verifyApple = async (_identityToken: string): Promise<VerifiedOAuthIdentit
 };
 
 const verify = async (provider: OAuthProvider, token: string): Promise<VerifiedOAuthIdentity> => {
-  if (!token) throw new CustomException("A provider token is required.", badRequest);
+  try {
+    if (!token) throw new CustomException("A provider token is required.", badRequest);
 
-  switch (provider) {
-    case "google":
-      return verifyGoogle(token);
-    case "facebook":
-      return verifyFacebook(token);
-    case "apple":
-      return verifyApple(token);
-    default:
-      throw new CustomException("Unsupported provider.", badRequest);
+    switch (provider) {
+      case "google":
+        return await verifyGoogle(token);
+      case "facebook":
+        return await verifyFacebook(token);
+      case "apple":
+        return await verifyApple(token);
+      default:
+        throw new CustomException("Unsupported provider.", badRequest);
+    }
+  } catch (error) {
+    throw toCustomException(error);
   }
 };
 

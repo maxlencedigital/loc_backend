@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../dist/commons/Config/LoadEnv.js";
 import bcrypt from "bcrypt";
 
 // Deliberately NOT an HTTP endpoint: requiring deploy access is a higher bar

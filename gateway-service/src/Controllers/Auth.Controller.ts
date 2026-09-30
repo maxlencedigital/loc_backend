@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { AuthService } from "../Services/Auth.Service.js";
+import { SessionService } from "../Services/Session.Service.js";
 import {
   handleErrorResponse,
   handleSuccessResponse,
-  handleNotImplementedResponse,
 } from "../../commons/Response/Response.js";
 import { created, successCode, badRequest } from "../../commons/Utils/StatusCode.js";
 import { CustomException } from "../../commons/Exception/CustomException.js";
@@ -65,7 +65,7 @@ const register = async (req: Request, res: Response) => {
  *               password: { type: string }
  *     responses:
  *       200:
- *         description: Login successful — returns a Bearer token.
+ *         description: "Login successful. Returns { token, user } where user is the dashboard User shape (id, name, email, phone, role, storeId, initials, status, lastActiveAt, joinedAt); role is the backend role. The token carries userId, role and storeId."
  *       401:
  *         description: Invalid email or password.
  */
@@ -87,7 +87,13 @@ const login = async (req: Request, res: Response) => {
  * @openapi
  * /auth/refresh:
  *   post:
- *     summary: Exchange a refresh token for a new access token
+ *     summary: Exchange a refresh token for a new access token and a new refresh token
+ *     description: >
+ *       Public. The refresh token is single-use: it is replaced by the one in the response, so
+ *       the client must store the new one. The user is re-read from the database, so a
+ *       deactivated account is refused and a role or store change applies here.
+ *       Presenting a token that was already used (after a 10 second grace for simultaneous
+ *       tabs) revokes the whole sign-in, since it means the token was copied.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -100,11 +106,11 @@ const login = async (req: Request, res: Response) => {
  *               refreshToken: { type: string }
  *     responses:
  *       200:
- *         description: "Scaffolded per API contract — not yet implemented. Once wired up, returns: { token: string }."
+ *         description: "{ token, refreshToken, expiresIn (seconds the access token lives), user }."
  *       400:
  *         description: Missing refreshToken.
- *       501:
- *         description: Endpoint scaffolded per API contract — implementation pending.
+ *       401:
+ *         description: "Unknown, expired, revoked or reused token; sign in again. result.retry is true when a simultaneous refresh won: read the latest stored token and retry once."
  */
 const refresh = async (req: Request, res: Response) => {
   try {
@@ -112,7 +118,8 @@ const refresh = async (req: Request, res: Response) => {
     if (!refreshToken) {
       throw new CustomException("refreshToken is required.", badRequest);
     }
-    return handleNotImplementedResponse(res);
+    const result = await SessionService.refresh(refreshToken);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Session refreshed.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -138,7 +145,7 @@ const refresh = async (req: Request, res: Response) => {
  *               email: { type: string }
  *               phoneNumber: { type: string }
  *               password: { type: string, minLength: 8 }
- *               role: { type: string, enum: [admin, staff, driver] }
+ *               role: { type: string, enum: [admin, manager, hr, staff, driver] }
  *     responses:
  *       201:
  *         description: Account created.

@@ -1,5 +1,15 @@
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { CustomException } from "../../commons/Exception/CustomException.js";
+
+// Sessions are covered in Session.Service.test.ts; here the store just has to accept writes.
+jest.mock("../Queries/RefreshToken.Query.js", () => ({
+  RefreshTokenQuery: {
+    create: jest.fn().mockResolvedValue({}),
+    purgeExpired: jest.fn().mockResolvedValue(0),
+    revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 
 // Same factory-mock approach as Auth.Service.test.ts: keeps the Prisma client
 // chain, which throws at import without a database URL, out of these tests.
@@ -45,6 +55,7 @@ jest.mock("./OAuth.Service.js", () => ({
 
 import { UserQuery } from "../Queries/User.Query.js";
 import { OtpChallengeQuery } from "../Queries/OtpChallenge.Query.js";
+import { RefreshTokenQuery } from "../Queries/RefreshToken.Query.js";
 import { OAuthService } from "./OAuth.Service.js";
 import { AuthService } from "./Auth.Service.js";
 
@@ -258,6 +269,24 @@ describe("loginOAuth", () => {
     expect(users.create).not.toHaveBeenCalled();
   });
 
+  it("signs the account's store into the token", async () => {
+    process.env.JWT_SECRET = "test-secret";
+    oauth.verify.mockResolvedValue(identity);
+    users.findByOAuthIdentity.mockResolvedValue({
+      id: "u1",
+      name: "Asha",
+      email: identity.email,
+      phoneNumber: null,
+      role: "staff",
+      storeId: "store-1",
+      isActive: true,
+    } as any);
+
+    const result = await AuthService.loginOAuth("google", "tok");
+
+    expect(jwt.decode(result.token)).toMatchObject({ userId: "u1", role: "staff", storeId: "store-1" });
+  });
+
   it("links onto an existing password account with the same verified email", async () => {
     oauth.verify.mockResolvedValue(identity);
     users.findByOAuthIdentity.mockResolvedValue(null);
@@ -351,6 +380,24 @@ describe("password reset", () => {
     const [, newHash] = users.setPassword.mock.calls[0];
     expect(newHash).not.toBe("BrandNewPassw0rd");
     expect(await bcrypt.compare("BrandNewPassw0rd", newHash)).toBe(true);
+  });
+
+  it("reset() signs the account out everywhere", async () => {
+    otps.findById.mockResolvedValue({
+      id: "chal-1",
+      purpose: "password_reset",
+      destination: "a@x.com",
+      otpHash: await bcrypt.hash("111222", 4),
+      userId: "u1",
+      attempts: 0,
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    } as any);
+    users.findById.mockResolvedValue({ id: "u1", isActive: true } as any);
+
+    await AuthService.passwordReset("chal-1", "111222", "BrandNewPassw0rd");
+
+    expect(RefreshTokenQuery.revokeAllForUser).toHaveBeenCalledWith("u1", "password_reset");
   });
 
   it("reset() refuses a password-reset code that came from a different flow", async () => {

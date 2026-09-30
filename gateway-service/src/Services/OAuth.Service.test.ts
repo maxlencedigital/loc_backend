@@ -174,4 +174,17 @@ describe("OAuthService.verify — Apple and unsupported providers", () => {
     await expect(OAuthService.verify("google", "")).rejects.toThrow(CustomException);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("turns a provider network failure into the standard error format, not a raw error", async () => {
+    // verify() returns the provider call; only an awaited return is caught by its try.
+    process.env.GOOGLE_AUTH_CLIENT_ID = WEB_CLIENT;
+    const logSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    global.fetch = jest.fn().mockRejectedValue(new TypeError("fetch failed")) as unknown as typeof fetch;
+
+    const error = await OAuthService.verify("google", "a-token").catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(CustomException);
+    expect(error.errorCode).toBe(500);
+    logSpy.mockRestore();
+  });
 });

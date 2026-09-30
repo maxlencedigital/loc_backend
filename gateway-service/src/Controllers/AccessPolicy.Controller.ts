@@ -10,7 +10,7 @@ const ALLOWED_EFFECTS = ["allow", "deny"];
  * /access-policies:
  *   post:
  *     summary: Create an access policy rule (admin only)
- *     tags: [Access Control]
+ *     tags: ["Admin - Access Control"]
  *     requestBody:
  *       required: true
  *       content:
@@ -53,7 +53,7 @@ const create = async (req: Request, res: Response) => {
  * /access-policies:
  *   get:
  *     summary: List access policy rules (admin only)
- *     tags: [Access Control]
+ *     tags: ["Admin - Access Control"]
  *     parameters:
  *       - in: query
  *         name: role
@@ -84,7 +84,7 @@ const list = async (_req: Request, res: Response) => {
  * /access-policies/{id}:
  *   get:
  *     summary: Get a single access policy rule (admin only)
- *     tags: [Access Control]
+ *     tags: ["Admin - Access Control"]
  *     parameters:
  *       - in: path
  *         name: id
@@ -109,7 +109,7 @@ const getById = async (_req: Request, res: Response) => {
  * /access-policies/{id}:
  *   patch:
  *     summary: Update an access policy rule (admin only)
- *     tags: [Access Control]
+ *     tags: ["Admin - Access Control"]
  *     parameters:
  *       - in: path
  *         name: id
@@ -155,7 +155,7 @@ const update = async (req: Request, res: Response) => {
  * /access-policies/{id}:
  *   delete:
  *     summary: Delete an access policy rule (admin only)
- *     tags: [Access Control]
+ *     tags: ["Admin - Access Control"]
  *     parameters:
  *       - in: path
  *         name: id
