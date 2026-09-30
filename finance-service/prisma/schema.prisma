@@ -20,3 +20,52 @@ datasource db {
   // server passes its own through a driver adapter — see
   // src/DB/Prisma.Connection.Db.ts.
 }
+
+enum PaymentStatus {
+  created
+  authorized
+  captured
+  failed
+  refunded
+}
+
+// One row per Razorpay order. A customer who fails and retries pays against the
+// SAME order, so the row keeps the best outcome seen, not the latest event.
+model Payment {
+  id                 String        @id @default(uuid())
+  // The commerce order this pays for. A plain reference: no service reads
+  // another's tables, so there is no foreign key.
+  orderRef           String
+  razorpayOrderId    String        @unique
+  razorpayPaymentId  String?       @unique
+  // Integer paise, never floating-point rupees.
+  amountPaise        Int
+  currency           String        @default("INR")
+  status             PaymentStatus @default(created)
+  method             String?
+  failureReason      String?
+  refundedPaise      Int           @default(0)
+  capturedAt         DateTime?
+  // Set when the gateway reports a different amount than was requested.
+  amountMismatch     Boolean       @default(false)
+  gatewayAmountPaise Int?
+  createdByUserId    String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([orderRef], map: "idx_payment_order_ref")
+  @@index([status], map: "idx_payment_status")
+  @@map("finance_payments")
+}
+
+// Razorpay delivers at-least-once; the unique eventId is what makes a replayed
+// webhook a no-op.
+model PaymentWebhookEvent {
+  id         String   @id @default(uuid())
+  eventId    String   @unique
+  type       String
+  payload    Json
+  receivedAt DateTime @default(now())
+
+  @@map("finance_payment_webhook_events")
+}

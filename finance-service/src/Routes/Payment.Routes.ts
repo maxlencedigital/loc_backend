@@ -4,10 +4,18 @@ import { requireIdentity, requireRole } from "../Middleware/Identity.js";
 
 const router = express.Router();
 
-// Called directly by the payment gateway itself — no gateway-issued
-// identity headers are present on this request.
-router.post("/payments/reconcile", PaymentController.reconcile);
-
+router.post(
+  "/payments/orders",
+  requireIdentity,
+  requireRole("admin", "manager", "staff"),
+  PaymentController.createOrder
+);
+router.post(
+  "/payments/verify",
+  requireIdentity,
+  requireRole("admin", "manager", "staff", "customer"),
+  PaymentController.verify
+);
 router.get(
   "/payments/mismatches",
   requireIdentity,

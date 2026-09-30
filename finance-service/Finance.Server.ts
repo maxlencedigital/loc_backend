@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./commons/Config/LoadEnv.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -7,6 +7,7 @@ import { connectDB } from "./src/DB/Prisma.Connection.Db.js";
 import router from "./src/Routes/Finance.Routes.js";
 import { requireInternalSecret } from "./src/Middleware/Identity.js";
 import { apiLimiter } from "./src/Middleware/RateLimiter.js";
+import { captureRawBody } from "./src/Middleware/RawBody.js";
 
 // DATABASE_URL carries host, user, password and database in one string, so
 // the discrete DB_* vars are for local docker-compose only.
@@ -38,7 +39,7 @@ if (process.env.TRUST_PROXY) {
 
 app.use(cors({ origin: process.env.CORS_ORIGIN!.split(",") }));
 app.use(helmet());
-app.use(express.json());
+app.use(express.json({ verify: captureRawBody }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(apiLimiter);

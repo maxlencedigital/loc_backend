@@ -1,37 +1,92 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { IdentifiedRequest } from "../Middleware/Identity.js";
-import { handleNotImplementedResponse } from "../../commons/Response/Response.js";
+import {
+  handleErrorResponse,
+  handleNotImplementedResponse,
+  handleSuccessResponse,
+} from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { PaymentService } from "../Services/Payment.Service.js";
 
 /**
  * @openapi
- * /payments/reconcile:
+ * /payments/orders:
  *   post:
- *     summary: Payment gateway webhook receiver
+ *     operationId: createPaymentOrder
+ *     summary: Create a Razorpay order to pay for an order
  *     description: >
- *       Called directly by the payment gateway, not routed through the
- *       API gateway — carries no Bearer token. The real implementation
- *       must verify the gateway's webhook signature header before
- *       trusting this payload and matching it against Order.paymentId;
- *       that verification and matching logic is not yet wired up.
- *     tags: [Payments]
- *     security: []
+ *       **Who can call this:** admin, manager, staff (super_admin always allowed).
+ *       Server-side call: the amount is NOT taken from a customer, it comes from the
+ *       order the caller has already priced. Returns what the app needs to open
+ *       Razorpay Checkout (`razorpayOrderId`, `amountPaise`, `keyId`).
+ *     tags: ["Admin - Payments & Reconciliation"]
  *     requestBody:
  *       required: true
- *       description: Raw webhook payload — exact shape depends on which payment gateway is chosen.
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             additionalProperties: true
+ *             required: [orderRef, amount]
+ *             properties:
+ *               orderRef: { type: string, description: "The commerce order this pays for" }
+ *               amount: { type: number, description: "Amount in INR, e.g. 499.50" }
+ *     responses:
+ *       201:
+ *         description: Razorpay order created.
+ *       400:
+ *         description: Missing or invalid fields.
+ *       409:
+ *         description: This order is already paid.
+ *       503:
+ *         description: The payment provider is unreachable or not configured.
+ */
+const createOrder = async (req: IdentifiedRequest, res: Response) => {
+  try {
+    const result = await PaymentService.createCheckout(req.body, req.user?.id ?? null);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Payment order created.");
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
+};
+
+/**
+ * @openapi
+ * /payments/verify:
+ *   post:
+ *     operationId: verifyPayment
+ *     summary: Confirm a completed Checkout with Razorpay's signature
+ *     description: >
+ *       **Who can call this:** admin, manager, staff, customer (super_admin always allowed).
+ *       Checks the signature Razorpay Checkout returned, then reads the real payment
+ *       status from Razorpay. The webhook reaches the same result independently, so
+ *       an app that never calls this still ends up correct.
+ *     tags: ["Admin - Payments & Reconciliation"]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [razorpayOrderId, razorpayPaymentId, razorpaySignature]
+ *             properties:
+ *               razorpayOrderId: { type: string }
+ *               razorpayPaymentId: { type: string }
+ *               razorpaySignature: { type: string }
  *     responses:
  *       200:
- *         description: Webhook accepted for processing.
+ *         description: Payment status after verification.
+ *       400:
+ *         description: Missing fields or an invalid signature.
+ *       404:
+ *         description: No such payment.
  */
-const reconcile = async (_req: Request, res: Response) => {
-  return handleNotImplementedResponse(
-    res,
-    "Payment reconciliation webhook scaffolded — signature verification and matching logic pending."
-  );
+const verify = async (req: IdentifiedRequest, res: Response) => {
+  try {
+    const result = await PaymentService.confirmCheckout(req.body ?? {});
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Payment verified.");
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
 };
 
 /**
@@ -42,7 +97,7 @@ const reconcile = async (_req: Request, res: Response) => {
  *     description: >
  *       Payments where a gateway settlement amount didn't match the
  *       corresponding Order.paymentId, flagged for manual review.
- *     tags: [Payments]
+ *     tags: ["Admin - Payments & Reconciliation"]
  *     parameters:
  *       - in: query
  *         name: status
@@ -68,4 +123,4 @@ const listMismatches = async (_req: IdentifiedRequest, res: Response) => {
   );
 };
 
-export const PaymentController = { reconcile, listMismatches };
+export const PaymentController = { createOrder, verify, listMismatches };
