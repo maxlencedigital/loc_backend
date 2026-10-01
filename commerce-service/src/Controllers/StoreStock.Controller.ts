@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { StoreStockService } from "../Services/StoreStock.Service.js";
 
 /**
  * @openapi
@@ -61,12 +62,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listStoreStock = async (_req: Request, res: Response) => {
+const listStoreStock = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await StoreStockService.listStoreStock(scope, req.params.id, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -114,12 +115,12 @@ const listStoreStock = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listStockAlerts = async (_req: Request, res: Response) => {
+const listStockAlerts = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await StoreStockService.listStockAlerts(scope, req.params.id, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -150,12 +151,12 @@ const listStockAlerts = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getStoreStockItem = async (_req: Request, res: Response) => {
+const getStoreStockItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await StoreStockService.getStoreStockItem(scope, req.params.id, req.params.itemId);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -198,13 +199,13 @@ const getStoreStockItem = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const flagLowStock = async (req: Request, res: Response) => {
+const flagLowStock = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["level"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await StoreStockService.flagLowStock(scope, user, req.params.id, req.params.itemId, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -63,7 +63,12 @@ describe("resolveStoreScope", () => {
     });
   });
 
-  it.each<UserRole>(["hr", "driver", "customer"])("refuses the %s role outright", (role) => {
+  it("lets hr see every store, whatever store or scope header it carries", () => {
+    expect(resolveStoreScope(requestFor("hr"))).toBeNull();
+    expect(resolveStoreScope(requestFor("hr", { storeId: STORE_A, scopeStoreId: STORE_B }))).toBeNull();
+  });
+
+  it.each<UserRole>(["driver", "customer"])("refuses the %s role outright", (role) => {
     expect(refusal(requestFor(role, { storeId: STORE_A })).errorCode).toBe(403);
   });
 

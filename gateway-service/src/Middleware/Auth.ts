@@ -46,4 +46,11 @@ const requireRole = (...roles: UserRole[]) => {
   };
 };
 
-export { verifyToken, requireRole };
+// For the one route that serves both a signed-in caller and an anonymous one (POST /auth/2fa/verify):
+// no header passes through without a user; a header that is present must be valid.
+const optionalToken = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!req.header("Authorization")) return next();
+  return verifyToken(req, res, next);
+};
+
+export { verifyToken, requireRole, optionalToken };

@@ -10,6 +10,7 @@
     "generate:openapi": "node scripts/generate-openapi.mjs",
     "seed:super-admin": "npm run build && node scripts/seed-super-admin.mjs",
     "db:seed": "npm run build && node scripts/seed-demo-users.mjs",
+    "db:seed:team": "node scripts/seed-team-users.mjs",
     "test": "prisma generate && jest",
     "test:watch": "jest --watch",
     "db:migrate": "prisma migrate deploy",

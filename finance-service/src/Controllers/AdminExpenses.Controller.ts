@@ -1,8 +1,13 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { actorOf } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { parsePage } from "../../commons/Utils/Pagination.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { ExpenseService } from "../Services/Expense.Service.js";
+import { OperatingCostService } from "../Services/OperatingCost.Service.js";
+import { MAX_RECEIPT_BYTES } from "../Services/Expense.Service.js";
+import { readMultipart } from "../Utils/Multipart.js";
 
 /**
  * @openapi
@@ -48,12 +53,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listExpenseCategories = async (_req: Request, res: Response) => {
+const listExpenseCategories = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.listCategories(parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -100,13 +104,11 @@ const listExpenseCategories = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createExpenseCategory = async (req: Request, res: Response) => {
+const createExpenseCategory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name"]);
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.createCategory(req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Expense category created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -148,12 +150,11 @@ const createExpenseCategory = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getExpenseCategory = async (_req: Request, res: Response) => {
+const getExpenseCategory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.getCategory(req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -206,12 +207,11 @@ const getExpenseCategory = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateExpenseCategory = async (_req: Request, res: Response) => {
+const updateExpenseCategory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.updateCategory(req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Expense category updated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -238,12 +238,11 @@ const updateExpenseCategory = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteExpenseCategory = async (_req: Request, res: Response) => {
+const deleteExpenseCategory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.deleteCategory(req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Expense category deleted.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -314,12 +313,11 @@ const deleteExpenseCategory = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listExpenses = async (_req: Request, res: Response) => {
+const listExpenses = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.listExpenses(req.query as Record<string, unknown>, actorOf(req), parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -331,9 +329,15 @@ const listExpenses = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: createExpense
  *     summary: "Create an expense"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). A new expense is always recorded; approval is a separate step with its own history. Idempotent through the Idempotency-Key header."
  *     tags: ["Admin - Expenses & Operating Costs"]
  *     x-roles: [admin]
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: false
+ *         schema: { type: string, maxLength: 128 }
+ *         description: "A retry with the same key returns the first result instead of creating a second record."
  *     requestBody:
  *       required: true
  *       content:
@@ -378,13 +382,11 @@ const listExpenses = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createExpense = async (req: Request, res: Response) => {
+const createExpense = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["date", "categoryId", "amount"]);
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.createExpense(req.body, actorOf(req), req.header("idempotency-key"));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Expense recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -432,12 +434,11 @@ const createExpense = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getExpense = async (_req: Request, res: Response) => {
+const getExpense = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.getExpense(req.params.id as string, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -502,12 +503,11 @@ const getExpense = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateExpense = async (_req: Request, res: Response) => {
+const updateExpense = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.updateExpense(req.params.id as string, req.body, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Expense updated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -534,12 +534,11 @@ const updateExpense = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteExpense = async (_req: Request, res: Response) => {
+const deleteExpense = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.deleteExpense(req.params.id as string, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Expense deleted.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -576,12 +575,11 @@ const deleteExpense = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const approveExpense = async (_req: Request, res: Response) => {
+const approveExpense = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ExpenseService.approveExpense(req.params.id as string, req.body, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Expense approved.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -619,12 +617,13 @@ const approveExpense = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadExpenseReceipt = async (_req: Request, res: Response) => {
+const uploadExpenseReceipt = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const upload = await readMultipart(req, MAX_RECEIPT_BYTES + 16_384);
+    const file = upload.files.find((f) => f.field === "file");
+    const result = await ExpenseService.attachReceipt(req.params.id as string, file, actorOf(req));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Receipt attached.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -687,12 +686,11 @@ const uploadExpenseReceipt = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listOperatingCosts = async (_req: Request, res: Response) => {
+const listOperatingCosts = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await OperatingCostService.listOperatingCosts(req.query as Record<string, unknown>, actorOf(req), parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -753,13 +751,11 @@ const listOperatingCosts = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createOperatingCost = async (req: Request, res: Response) => {
+const createOperatingCost = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "type", "amount", "frequency", "startDate"]);
-    return handleNotImplementedResponse(res);
+    const result = await OperatingCostService.createOperatingCost(req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Operating cost created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -812,12 +808,11 @@ const createOperatingCost = async (req: Request, res: Response) => {
  *                               amount: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMonthlyOperatingCost = async (_req: Request, res: Response) => {
+const getMonthlyOperatingCost = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await OperatingCostService.getMonthlyOperatingCost(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -866,12 +861,11 @@ const getMonthlyOperatingCost = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getOperatingCost = async (_req: Request, res: Response) => {
+const getOperatingCost = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await OperatingCostService.getOperatingCost(req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -938,12 +932,11 @@ const getOperatingCost = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateOperatingCost = async (_req: Request, res: Response) => {
+const updateOperatingCost = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await OperatingCostService.updateOperatingCost(req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Operating cost updated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -970,12 +963,11 @@ const updateOperatingCost = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteOperatingCost = async (_req: Request, res: Response) => {
+const deleteOperatingCost = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await OperatingCostService.deleteOperatingCost(req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Operating cost deleted.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

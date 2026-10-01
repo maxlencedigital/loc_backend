@@ -16,6 +16,7 @@ const LOCAL_DEFAULTS: Record<string, string> = {
   ENABLE_DOCS: "true",
   RATE_LIMIT_ENABLED: "false",
   CORS_ORIGIN: "*",
+  GATEWAY_SERVICE_URL: "http://127.0.0.1:5000",
   COMMERCE_SERVICE_URL: "http://127.0.0.1:5001",
   LOGISTICS_SERVICE_URL: "http://127.0.0.1:5002",
   FINANCE_SERVICE_URL: "http://127.0.0.1:5003",

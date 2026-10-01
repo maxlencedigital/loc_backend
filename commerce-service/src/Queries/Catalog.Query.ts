@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../DB/Prisma.Connection.Db.js";
+import { PricingOverlayQuery } from "./PricingOverlay.Query.js";
 import {
   IPriceList,
   IPriceListCreate,
@@ -137,10 +138,12 @@ const updateRowRates = async (
   }
 };
 
-// Active lists carrying only the rows for the services being ordered.
+// Active lists carrying only the rows for the services being ordered, plus the global, area and
+// store override lists (narrowed to the stores they apply to), so every caller that ranks the
+// result by store prices with the full hierarchy.
 const findActiveForPricing = async (serviceIds: string[], db: Db = prisma): Promise<IPricingList[]> => {
   try {
-    return await db.priceList.findMany({
+    const lists = await db.priceList.findMany({
       where: { active: true },
       select: {
         id: true,
@@ -153,6 +156,7 @@ const findActiveForPricing = async (serviceIds: string[], db: Db = prisma): Prom
         },
       },
     });
+    return [...lists, ...(await PricingOverlayQuery.overlayLists(serviceIds))];
   } catch (error) {
     throw error;
   }

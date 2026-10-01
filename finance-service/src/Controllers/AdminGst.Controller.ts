@@ -1,8 +1,12 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { actorOf } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { parsePage } from "../../commons/Utils/Pagination.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { GstService } from "../Services/Gst.Service.js";
+import { LedgerService } from "../Services/Ledger.Service.js";
+import { ReceivableService } from "../Services/Receivable.Service.js";
 
 /**
  * @openapi
@@ -51,12 +55,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listGstReports = async (_req: Request, res: Response) => {
+const listGstReports = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await GstService.listReports(req.query as Record<string, unknown>, parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -68,7 +71,7 @@ const listGstReports = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: generateGstReport
  *     summary: "Generate a month's GST report"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). One report per month, built from commerce's order figures and the refunds confirmed in the month. Generating again before filing refreshes it; a filed report can never change."
  *     tags: ["Admin - GST, Receivables & Ledger"]
  *     x-roles: [admin]
  *     requestBody:
@@ -80,7 +83,9 @@ const listGstReports = async (_req: Request, res: Response) => {
  *             required: [month]
  *             properties:
  *               month: { type: string, description: "YYYY-MM" }
- *               storeIds: { type: array, items: { type: string, format: uuid } }
+ *               storeIds: { type: array, items: { type: string, format: uuid }, description: "Limit the figures to these stores" }
+ *               targetStatus: { type: string, enum: [draft, ready, filed], description: "Move the report forward; filing needs a ready report, an ended month and an acknowledgement" }
+ *               acknowledgement: { type: string, description: "The filing acknowledgement number, required to file" }
  *     responses:
  *       201:
  *         description: "Created."
@@ -88,13 +93,11 @@ const listGstReports = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const generateGstReport = async (req: Request, res: Response) => {
+const generateGstReport = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["month"]);
-    return handleNotImplementedResponse(res);
+    const result = await GstService.generateReport(req.body, actorOf(req));
+    return handleSuccessResponse({ statusCode: created, result }, res, "GST report generated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -121,12 +124,11 @@ const generateGstReport = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getGstReport = async (_req: Request, res: Response) => {
+const getGstReport = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await GstService.getReport(req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -138,7 +140,7 @@ const getGstReport = async (_req: Request, res: Response) => {
  *   get:
  *     operationId: exportGstReport
  *     summary: "Download a GST report for filing"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). csv and json are supported; xlsx is answered with 400."
  *     tags: ["Admin - GST, Receivables & Ledger"]
  *     x-roles: [admin]
  *     parameters:
@@ -156,12 +158,13 @@ const getGstReport = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const exportGstReport = async (_req: Request, res: Response) => {
+const exportGstReport = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const file = await GstService.exportReport(req.params.id as string, req.query as Record<string, unknown>);
+    res.setHeader("Content-Type", file.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${file.fileName}"`);
+    return res.status(successCode).send(file.body);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -225,12 +228,11 @@ const exportGstReport = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listLedgerEntries = async (_req: Request, res: Response) => {
+const listLedgerEntries = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await LedgerService.listEntries(req.query as Record<string, unknown>, parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -279,12 +281,11 @@ const listLedgerEntries = async (_req: Request, res: Response) => {
  *                               balance: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getLedgerSummary = async (_req: Request, res: Response) => {
+const getLedgerSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await LedgerService.summary(req.query as Record<string, unknown>);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -348,12 +349,11 @@ const getLedgerSummary = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listReceivables = async (_req: Request, res: Response) => {
+const listReceivables = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ReceivableService.listReceivables(req.query as Record<string, unknown>, actorOf(req), parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -396,12 +396,11 @@ const listReceivables = async (_req: Request, res: Response) => {
  *                         total: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getReceivablesAging = async (_req: Request, res: Response) => {
+const getReceivablesAging = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ReceivableService.getAging(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -443,12 +442,11 @@ const getReceivablesAging = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const runReceivableReminders = async (_req: Request, res: Response) => {
+const runReceivableReminders = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ReceivableService.runReminders(req.body, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Reminder run finished.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -475,12 +473,11 @@ const runReceivableReminders = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getReceivable = async (_req: Request, res: Response) => {
+const getReceivable = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ReceivableService.getReceivable(req.params.id as string, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -492,7 +489,7 @@ const getReceivable = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: recordReceivablePayment
  *     summary: "Record a payment against a balance"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). A payment larger than the outstanding balance is refused with 409."
  *     tags: ["Admin - GST, Receivables & Ledger"]
  *     x-roles: [admin]
  *     parameters:
@@ -500,6 +497,11 @@ const getReceivable = async (_req: Request, res: Response) => {
  *         name: id
  *         required: true
  *         schema: { type: string }
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: false
+ *         schema: { type: string, maxLength: 128 }
+ *         description: "A retry with the same key returns the first payment instead of recording a second."
  *     requestBody:
  *       required: true
  *       content:
@@ -520,13 +522,11 @@ const getReceivable = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const recordReceivablePayment = async (req: Request, res: Response) => {
+const recordReceivablePayment = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["amount", "mode"]);
-    return handleNotImplementedResponse(res);
+    const result = await ReceivableService.recordPayment(req.params.id as string, req.body, actorOf(req), req.header("idempotency-key"));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Payment recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -565,13 +565,11 @@ const recordReceivablePayment = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const sendReceivableReminder = async (req: Request, res: Response) => {
+const sendReceivableReminder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["channel"]);
-    return handleNotImplementedResponse(res);
+    const result = await ReceivableService.sendReminder(req.params.id as string, req.body, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Reminder processed.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

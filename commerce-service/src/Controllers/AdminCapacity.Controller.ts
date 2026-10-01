@@ -1,7 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { CapacityService } from "../Services/Capacity.Service.js";
 
 /**
  * @openapi
@@ -45,12 +47,11 @@ import { handleErrorResponse, handleNotImplementedResponse } from "../../commons
  *                               risk: { type: string, enum: [low, medium, high] }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCapacityForecast = async (_req: Request, res: Response) => {
+const getCapacityForecast = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CapacityService.getCapacityForecast(resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -103,12 +104,11 @@ const getCapacityForecast = async (_req: Request, res: Response) => {
  *                         expressCanAccept: { type: boolean }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCapacityNow = async (_req: Request, res: Response) => {
+const getCapacityNow = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CapacityService.getCapacityNow(resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -153,12 +153,11 @@ const getCapacityNow = async (_req: Request, res: Response) => {
  *                               stage: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listExpressAtRisk = async (_req: Request, res: Response) => {
+const listExpressAtRisk = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CapacityService.listExpressAtRisk(resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

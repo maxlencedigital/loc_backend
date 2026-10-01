@@ -83,4 +83,18 @@ const requireRole = (...roles: UserRole[]) => {
   };
 };
 
-export { requireInternalSecret, requireIdentity, requireRole };
+const SERVICE_NAMES = ["gateway", "commerce", "logistics", "finance", "growth"];
+
+// For /internal/* routes: another service calling with the internal secret and no user.
+// The secret is already required for every route; this adds "and it says which service it
+// is", so an /internal route never runs for a forwarded end-user request. The gateway also
+// refuses to proxy any /internal path from outside.
+const requireServiceCall = (req: Request, res: Response, next: NextFunction) => {
+  const name = req.header("x-service-name");
+  if (!name || !SERVICE_NAMES.includes(name)) {
+    return handleErrorResponse(new CustomException("This endpoint is for other services only.", unauthorized), res);
+  }
+  next();
+};
+
+export { requireInternalSecret, requireIdentity, requireRole, requireServiceCall };

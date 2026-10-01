@@ -1,8 +1,13 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { actorOf } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { parsePage } from "../../commons/Utils/Pagination.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { PaymentAdminService } from "../Services/PaymentAdmin.Service.js";
+import { RefundService } from "../Services/Refund.Service.js";
+import { MAX_STATEMENT_BYTES, ReconciliationService } from "../Services/Reconciliation.Service.js";
+import { readMultipart } from "../Utils/Multipart.js";
 
 /**
  * @openapi
@@ -64,12 +69,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listPayments = async (_req: Request, res: Response) => {
+const listPayments = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PaymentAdminService.listPayments(req.query as Record<string, unknown>, actorOf(req), parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -108,13 +112,11 @@ const listPayments = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const resolvePaymentMismatch = async (req: Request, res: Response) => {
+const resolvePaymentMismatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["resolution", "note"]);
-    return handleNotImplementedResponse(res);
+    const result = await PaymentAdminService.resolveMismatch(req.params.id as string, req.body, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Mismatch resolved.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -141,12 +143,11 @@ const resolvePaymentMismatch = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPayment = async (_req: Request, res: Response) => {
+const getPayment = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PaymentAdminService.getPayment(req.params.id as string, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -178,12 +179,13 @@ const getPayment = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadBankStatement = async (_req: Request, res: Response) => {
+const uploadBankStatement = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const upload = await readMultipart(req, MAX_STATEMENT_BYTES + 16_384);
+    const file = upload.files.find((f) => f.field === "file");
+    const result = await ReconciliationService.uploadStatement(file, upload.fields, actorOf(req));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Bank statement uploaded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -216,13 +218,11 @@ const uploadBankStatement = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createReconciliationRun = async (req: Request, res: Response) => {
+const createReconciliationRun = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["from", "to"]);
-    return handleNotImplementedResponse(res);
+    const result = await ReconciliationService.createRun(req.body, actorOf(req));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Reconciliation run completed.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -274,12 +274,11 @@ const createReconciliationRun = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listReconciliationRuns = async (_req: Request, res: Response) => {
+const listReconciliationRuns = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ReconciliationService.listRuns(parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -306,12 +305,11 @@ const listReconciliationRuns = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getReconciliationRun = async (_req: Request, res: Response) => {
+const getReconciliationRun = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ReconciliationService.getRun(req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -358,12 +356,11 @@ const getReconciliationRun = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listReconciliationExceptions = async (_req: Request, res: Response) => {
+const listReconciliationExceptions = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ReconciliationService.listExceptions(req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -375,9 +372,15 @@ const listReconciliationExceptions = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: createRefund
  *     summary: "Refund a payment"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). Asks for a refund, which another admin then approves; the amount cannot exceed what was captured minus what is already refunded or in flight. Idempotent through the Idempotency-Key header."
  *     tags: ["Admin - Payments & Reconciliation"]
  *     x-roles: [admin]
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: false
+ *         schema: { type: string, maxLength: 128 }
+ *         description: "A retry with the same key returns the first result instead of creating a second record."
  *     requestBody:
  *       required: true
  *       content:
@@ -396,13 +399,15 @@ const listReconciliationExceptions = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: Payment not found.
+ *       409:
+ *         description: "The payment is not captured, the amount is more than can be refunded, or the key was used for a different refund."
  */
-const createRefund = async (req: Request, res: Response) => {
+const createRefund = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["paymentId", "amount", "reason"]);
-    return handleNotImplementedResponse(res);
+    const result = await RefundService.createRefund(req.body, actorOf(req), req.header("idempotency-key"));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Refund requested.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -461,12 +466,11 @@ const createRefund = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listRefunds = async (_req: Request, res: Response) => {
+const listRefunds = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await RefundService.listRefunds(req.query as Record<string, unknown>, parsePage(req.query as Record<string, unknown>));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -493,12 +497,11 @@ const listRefunds = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const approveRefund = async (_req: Request, res: Response) => {
+const approveRefund = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await RefundService.approveRefund(req.params.id as string, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Refund approved.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

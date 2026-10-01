@@ -1,8 +1,8 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { CustomerProfileService } from "../Services/CustomerProfile.Service.js";
 
 /**
  * @openapi
@@ -54,12 +54,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAddresses = async (_req: Request, res: Response) => {
+const listAddresses = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerProfileService.listAddresses(user, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Addresses.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -118,13 +118,12 @@ const listAddresses = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createAddress = async (req: Request, res: Response) => {
+const createAddress = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["label", "line1", "city", "pincode"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerProfileService.createAddress(user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Address saved.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -172,12 +171,12 @@ const createAddress = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAddress = async (_req: Request, res: Response) => {
+const getAddress = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerProfileService.getAddress(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Address.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -242,12 +241,12 @@ const getAddress = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateAddress = async (_req: Request, res: Response) => {
+const updateAddress = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerProfileService.updateAddress(user, req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Address updated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -274,12 +273,12 @@ const updateAddress = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteAddress = async (_req: Request, res: Response) => {
+const deleteAddress = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerProfileService.deleteAddress(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Address deleted.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -315,12 +314,12 @@ const deleteAddress = async (_req: Request, res: Response) => {
  *                         profileComplete: { type: boolean }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMyProfile = async (_req: Request, res: Response) => {
+const getMyProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerProfileService.getProfile(user);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Profile.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -352,12 +351,12 @@ const getMyProfile = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateMyProfile = async (_req: Request, res: Response) => {
+const updateMyProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerProfileService.updateProfile(user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Profile updated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

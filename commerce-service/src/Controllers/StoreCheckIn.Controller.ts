@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { CheckInService } from "../Services/CheckIn.Service.js";
 
 /**
  * @openapi
@@ -50,12 +51,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listFabricRiskRules = async (_req: Request, res: Response) => {
+const listFabricRiskRules = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.listFabricRules(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -106,12 +106,11 @@ const listFabricRiskRules = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCareSummary = async (_req: Request, res: Response) => {
+const getCareSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.careSummary(req.params.id as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -145,10 +144,12 @@ const getCareSummary = async (_req: Request, res: Response) => {
  *                 type: array
  *                 items:
  *                   type: object
- *                   required: [garmentTypeId, quantity]
+ *                   required: [garment, quantity]
  *                   properties:
- *                     garmentTypeId: { type: string, format: uuid }
- *                     quantity: { type: integer }
+ *                     garment: { type: string }
+ *                     garmentTypeId: { type: string, format: uuid, description: "optional until the garment-type catalogue exists" }
+ *                     serviceId: { type: string, format: uuid, description: "needed when the order has more than one service" }
+ *                     quantity: { type: integer, description: "one tagged piece is created per unit" }
  *                     condition: { type: string, enum: [ok, stain, tear, loose_button, colour_fade, damaged, other] }
  *                     fabric: { type: string, enum: [cotton, linen, wool, silk, synthetic, blend, denim, leather, unknown] }
  *                     careFlags: { type: array, items: { type: string }, description: "e.g. delicate, cold_wash, hand_wash, no_tumble_dry" }
@@ -171,15 +172,15 @@ const getCareSummary = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
+ *       409:
+ *         description: "The garment or order is past the stage where this can change."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const checkInOrder = async (req: Request, res: Response) => {
+const checkInOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["receivedFrom", "items"]);
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.checkIn(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Order checked in.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -191,7 +192,7 @@ const checkInOrder = async (req: Request, res: Response) => {
  *   post:
  *     operationId: addOrderItem
  *     summary: "Add an item to an order"
- *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed). Records an extra physical garment between check-in and the start of washing; it does not reprice the order."
  *     tags: ["Store - Check-in & Care"]
  *     x-roles: [admin, manager, staff]
  *     parameters:
@@ -205,12 +206,12 @@ const checkInOrder = async (req: Request, res: Response) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [garmentTypeId, serviceId]
+ *             required: [garment]
  *             properties:
- *               garmentTypeId: { type: string, format: uuid }
- *               serviceId: { type: string, format: uuid }
- *               quantity: { type: integer, description: "pieces, for per-piece services" }
- *               weightKg: { type: number, description: "kilograms, for by-weight services" }
+ *               garment: { type: string }
+ *               garmentTypeId: { type: string, format: uuid, description: "optional until the garment-type catalogue exists" }
+ *               serviceId: { type: string, format: uuid, description: "needed when the order has more than one service" }
+ *               quantity: { type: integer, description: "pieces to add, default 1; garments are counted, not weighed" }
  *               fabric: { type: string, enum: [cotton, linen, wool, silk, synthetic, blend, denim, leather, unknown] }
  *               note: { type: string }
  *               condition: { type: string, enum: [ok, stain, tear, loose_button, colour_fade, damaged, other] }
@@ -222,15 +223,15 @@ const checkInOrder = async (req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
+ *       409:
+ *         description: "The garment or order is past the stage where this can change."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const addOrderItem = async (req: Request, res: Response) => {
+const addOrderItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["garmentTypeId", "serviceId"]);
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.addItem(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Garment added.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -272,14 +273,15 @@ const addOrderItem = async (req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
+ *       409:
+ *         description: "The garment or order is past the stage where this can change."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateOrderItem = async (_req: Request, res: Response) => {
+const updateOrderItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.updateItem(req.params.id as string, req.params.itemId as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Garment updated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -308,14 +310,15 @@ const updateOrderItem = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       403:
  *         description: Your role is not allowed to call this.
+ *       409:
+ *         description: "The garment or order is past the stage where this can change."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const removeOrderItem = async (_req: Request, res: Response) => {
+const removeOrderItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.removeItem(req.params.id as string, req.params.itemId as string, resolveStoreScope(req), req.user as RequestUser);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Garment removed.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -359,15 +362,15 @@ const removeOrderItem = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
+ *       409:
+ *         description: "The garment or order is past the stage where this can change."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setItemProcess = async (req: Request, res: Response) => {
+const setItemProcess = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["wash", "dry"]);
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.setItemProcess(req.params.id as string, req.params.itemId as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Process recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -418,12 +421,11 @@ const setItemProcess = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getProcessSuggestion = async (_req: Request, res: Response) => {
+const getProcessSuggestion = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CheckInService.getProcessSuggestion(req.params.id as string, req.params.itemId as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

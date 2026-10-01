@@ -141,6 +141,10 @@ services:
       DB_PORT: '5432'
       DB_NAME: laundry_development
       DB_SCHEMA: commerce
+      GATEWAY_SERVICE_URL: http://gateway-service:5000
+      LOGISTICS_SERVICE_URL: http://logistics-service:5002
+      FINANCE_SERVICE_URL: http://finance-service:5003
+      GROWTH_SERVICE_URL: http://growth-service:5004
       DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:
@@ -163,6 +167,10 @@ services:
       DB_PORT: '5432'
       DB_NAME: laundry_development
       DB_SCHEMA: logistics
+      GATEWAY_SERVICE_URL: http://gateway-service:5000
+      COMMERCE_SERVICE_URL: http://commerce-service:5001
+      FINANCE_SERVICE_URL: http://finance-service:5003
+      GROWTH_SERVICE_URL: http://growth-service:5004
       DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:
@@ -185,6 +193,10 @@ services:
       DB_PORT: '5432'
       DB_NAME: laundry_development
       DB_SCHEMA: finance
+      GATEWAY_SERVICE_URL: http://gateway-service:5000
+      COMMERCE_SERVICE_URL: http://commerce-service:5001
+      LOGISTICS_SERVICE_URL: http://logistics-service:5002
+      GROWTH_SERVICE_URL: http://growth-service:5004
       DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:
@@ -207,6 +219,10 @@ services:
       DB_PORT: '5432'
       DB_NAME: laundry_development
       DB_SCHEMA: growth
+      GATEWAY_SERVICE_URL: http://gateway-service:5000
+      COMMERCE_SERVICE_URL: http://commerce-service:5001
+      LOGISTICS_SERVICE_URL: http://logistics-service:5002
+      FINANCE_SERVICE_URL: http://finance-service:5003
       DB_SSL: 'false'
       REDIS_URL: redis://redis:6379
     ports:

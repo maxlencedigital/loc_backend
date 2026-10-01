@@ -149,4 +149,29 @@ const revokeAllFor = async (userId: string, reason: RevokeReason) => {
   }
 };
 
-export const SessionService = { issue, refresh, logout, revokeAllFor };
+// Ends every sign-in of the user except the one the presented refresh token belongs to. Without a
+// live token of the caller's own (missing, spent, someone else's) nothing can be kept, so all
+// end; the result says which happened.
+const revokeOthersFor = async (userId: string, rawToken: unknown, reason: RevokeReason): Promise<boolean> => {
+  try {
+    const row =
+      typeof rawToken === "string" && rawToken && rawToken.length <= MAX_REFRESH_TOKEN_LENGTH
+        ? await RefreshTokenQuery.findByHash(hashToken(rawToken))
+        : null;
+    const now = Date.now();
+    const current =
+      row && row.userId === userId && !row.revokedAt && row.expiresAt.getTime() > now && row.sessionExpiresAt.getTime() > now
+        ? row
+        : null;
+    if (!current) {
+      await RefreshTokenQuery.revokeAllForUser(userId, reason);
+      return false;
+    }
+    await RefreshTokenQuery.revokeAllForUserExceptFamily(userId, current.familyId, reason);
+    return true;
+  } catch (error) {
+    throw toCustomException(error);
+  }
+};
+
+export const SessionService = { issue, refresh, logout, revokeAllFor, revokeOthersFor };

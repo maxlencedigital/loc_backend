@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { CoverReportService } from "../Services/CoverReport.Service.js";
 
 /**
  * @openapi
@@ -56,14 +57,14 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                               employeeId: { type: string, format: uuid }
  *                               name: { type: string }
  *                               skills: { type: array, items: { type: string } }
+ *                         date: { type: string, format: date }
+ *                         assignmentsTracked: { type: boolean, description: "false until orders, batches and routes record who is assigned them; the assigned counts read 0" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAbsenceCover = async (_req: Request, res: Response) => {
+const getAbsenceCover = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CoverReportService.absenceCover(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -95,15 +96,14 @@ const getAbsenceCover = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The absent person was in, or the cover is not in."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reassignAbsentWork = async (req: Request, res: Response) => {
+const reassignAbsentWork = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["fromEmployeeId", "toEmployeeId", "date"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CoverReportService.reassign(resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -169,12 +169,10 @@ const reassignAbsentWork = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listDailyReports = async (_req: Request, res: Response) => {
+const listDailyReports = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CoverReportService.listDaily(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -219,12 +217,10 @@ const listDailyReports = async (_req: Request, res: Response) => {
  *                               examples: { type: array, items: { type: string } }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDailyReportPatterns = async (_req: Request, res: Response) => {
+const getDailyReportPatterns = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CoverReportService.patterns(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -251,12 +247,10 @@ const getDailyReportPatterns = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDailyReport = async (_req: Request, res: Response) => {
+const getDailyReport = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CoverReportService.getDaily(req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

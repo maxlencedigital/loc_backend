@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { CouponService } from "../Services/Coupon.Service.js";
+import { PackageService } from "../Services/Package.Service.js";
+import { actorId } from "./Actor.js";
 
 /**
  * @openapi
@@ -65,12 +67,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listCoupons = async (_req: Request, res: Response) => {
+const listCoupons = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.list(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -139,13 +140,11 @@ const listCoupons = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createCoupon = async (req: Request, res: Response) => {
+const createCoupon = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["code", "title", "type", "value", "validFrom", "validUntil"]);
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.create(req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -198,12 +197,11 @@ const createCoupon = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCoupon = async (_req: Request, res: Response) => {
+const getCoupon = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.get(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -278,12 +276,11 @@ const getCoupon = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateCoupon = async (_req: Request, res: Response) => {
+const updateCoupon = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.update(req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -310,12 +307,11 @@ const updateCoupon = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deactivateCoupon = async (_req: Request, res: Response) => {
+const deactivateCoupon = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.deactivate(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -355,12 +351,11 @@ const deactivateCoupon = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCouponUsage = async (_req: Request, res: Response) => {
+const getCouponUsage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.usage(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -416,12 +411,11 @@ const getCouponUsage = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listCustomerPackages = async (_req: Request, res: Response) => {
+const listCustomerPackages = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.listCustomerPackages(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -448,12 +442,11 @@ const listCustomerPackages = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCustomerPackage = async (_req: Request, res: Response) => {
+const getCustomerPackage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.getCustomerPackage(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -507,12 +500,11 @@ const getCustomerPackage = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listPrepaidPackages = async (_req: Request, res: Response) => {
+const listPrepaidPackages = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.listPackages(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -567,13 +559,11 @@ const listPrepaidPackages = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createPrepaidPackage = async (req: Request, res: Response) => {
+const createPrepaidPackage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "price", "credit", "validityDays"]);
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.createPackage(req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -619,12 +609,11 @@ const createPrepaidPackage = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPrepaidPackage = async (_req: Request, res: Response) => {
+const getPrepaidPackage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.getPackage(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -685,12 +674,11 @@ const getPrepaidPackage = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updatePrepaidPackage = async (_req: Request, res: Response) => {
+const updatePrepaidPackage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.updatePackage(req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -745,12 +733,11 @@ const updatePrepaidPackage = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listPackageSubscribers = async (_req: Request, res: Response) => {
+const listPackageSubscribers = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.listSubscribers(req.params.id, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

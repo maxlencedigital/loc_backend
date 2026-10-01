@@ -1,8 +1,12 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { EscalationService } from "../Services/Escalation.Service.js";
+import { FeedbackService } from "../Services/Feedback.Service.js";
+
+const id = (req: IdentifiedRequest) => req.params.id as string;
 
 /**
  * @openapi
@@ -10,7 +14,7 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *   get:
  *     operationId: listEscalations
  *     summary: "Complaints a store could not settle"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). With no status filter, the escalations still waiting for a decision; ask for resolved to see decided ones. Most recently escalated first."
  *     tags: ["Admin - Escalations & Feedback"]
  *     x-roles: [admin]
  *     parameters:
@@ -22,7 +26,7 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         schema: { type: integer, description: "page size, max 100" }
  *       - in: query
  *         name: status
- *         schema: { type: string, enum: [open, assigned, in_progress, resolved, escalated, closed] }
+ *         schema: { type: string, enum: [open, assigned, in_progress, resolved, escalated, closed], default: escalated }
  *       - in: query
  *         name: storeId
  *         schema: { type: string, format: uuid }
@@ -49,21 +53,26 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                             properties:
  *                               id: { type: string, format: uuid }
  *                               orderId: { type: string, format: uuid }
+ *                               orderRef: { type: string }
  *                               storeId: { type: string, format: uuid }
  *                               type: { type: string, enum: [damaged_item, late_delivery, wrong_charge, missing_item, quality, rider_behaviour, other] }
+ *                               status: { type: string }
  *                               reason: { type: string }
  *                               escalatedAt: { type: string, format: date-time }
  *                         page: { type: integer }
  *                         limit: { type: integer }
  *                         total: { type: integer }
+ *       400:
+ *         description: "Invalid filter."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listEscalations = async (_req: Request, res: Response) => {
+const listEscalations = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await EscalationService.list(resolveStoreScope(req), req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -75,7 +84,7 @@ const listEscalations = async (_req: Request, res: Response) => {
  *   get:
  *     operationId: getEscalation
  *     summary: "An escalated complaint with everything tried so far"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). The full complaint including the whole thread and internal notes. A complaint that was never escalated is a 404."
  *     tags: ["Admin - Escalations & Feedback"]
  *     x-roles: [admin]
  *     parameters:
@@ -90,12 +99,13 @@ const listEscalations = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getEscalation = async (_req: Request, res: Response) => {
+const getEscalation = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await EscalationService.get(resolveStoreScope(req), id(req)) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -107,7 +117,7 @@ const getEscalation = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: decideEscalation
  *     summary: "The final decision: refund, goodwill or a policy call"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). Only for an escalated complaint (409 otherwise); it becomes resolved. A refund needs an amount; goodwill may have one; the other decisions take none. The amount may not exceed the order amount. The decision is recorded, not paid out by this service."
  *     tags: ["Admin - Escalations & Feedback"]
  *     x-roles: [admin]
  *     parameters:
@@ -125,23 +135,23 @@ const getEscalation = async (_req: Request, res: Response) => {
  *             properties:
  *               decision: { type: string, enum: [refund, goodwill, reject, policy_exception] }
  *               amount: { type: number, description: "Amount in INR" }
- *               note: { type: string }
+ *               note: { type: string, maxLength: 2000 }
  *     responses:
  *       200:
- *         description: "OK."
+ *         description: "The complaint with its history."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       409:
+ *         description: "The complaint is not waiting for a decision."
  */
-const decideEscalation = async (req: Request, res: Response) => {
+const decideEscalation = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["decision", "note"]);
-    return handleNotImplementedResponse(res);
+    const result = await EscalationService.decide(req.user as RequestUser, resolveStoreScope(req), id(req), req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Decision recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -153,7 +163,7 @@ const decideEscalation = async (req: Request, res: Response) => {
  *   get:
  *     operationId: listFeedback
  *     summary: "Customer feedback, good and bad"
- *     description: "**Who can call this:** admin, hr, manager (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, hr, manager (super_admin always allowed). A manager sees their own store only; asking for another store is a 404. Newest first."
  *     tags: ["Admin - Escalations & Feedback"]
  *     x-roles: [admin, hr, manager]
  *     parameters:
@@ -171,7 +181,7 @@ const decideEscalation = async (req: Request, res: Response) => {
  *         schema: { type: string, format: uuid }
  *       - in: query
  *         name: rating
- *         schema: { type: integer }
+ *         schema: { type: integer, minimum: 1, maximum: 5 }
  *       - in: query
  *         name: from
  *         schema: { type: string, format: date }
@@ -199,21 +209,28 @@ const decideEscalation = async (req: Request, res: Response) => {
  *                               id: { type: string, format: uuid }
  *                               orderId: { type: string, format: uuid }
  *                               rating: { type: integer }
- *                               comment: { type: string }
+ *                               comment: { type: string, nullable: true }
+ *                               storeRating: { type: integer, nullable: true }
+ *                               riderRating: { type: integer, nullable: true }
  *                               storeId: { type: string, format: uuid }
- *                               riderId: { type: string, format: uuid }
+ *                               riderId: { type: string, format: uuid, nullable: true }
  *                               createdAt: { type: string, format: date-time }
  *                         page: { type: integer }
  *                         limit: { type: integer }
  *                         total: { type: integer }
+ *       400:
+ *         description: "Invalid filter."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "Store not found."
  */
-const listFeedback = async (_req: Request, res: Response) => {
+const listFeedback = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await FeedbackService.list(resolveStoreScope(req), req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -225,7 +242,7 @@ const listFeedback = async (_req: Request, res: Response) => {
  *   get:
  *     operationId: getFeedbackSummary
  *     summary: "How customers are feeling, by store and by rider"
- *     description: "**Who can call this:** admin, hr, manager (super_admin always allowed). Praise is captured too, so the business knows which stores and riders are doing well."
+ *     description: "**Who can call this:** admin, hr, manager (super_admin always allowed). Praise is captured too, so the business knows which stores and riders are doing well. Everything is a database aggregate. average, distribution and byStore use the overall rating; byRider uses the rider rating (top 100 by count); trend is one row per day for the last 90 days of the chosen range. An explicit range is at most 366 days."
  *     tags: ["Admin - Escalations & Feedback"]
  *     x-roles: [admin, hr, manager]
  *     parameters:
@@ -254,9 +271,9 @@ const listFeedback = async (_req: Request, res: Response) => {
  *                     result:
  *                       type: object
  *                       properties:
- *                         average: { type: number }
+ *                         average: { type: number, nullable: true }
  *                         count: { type: integer }
- *                         distribution: { type: object, description: "{ 1: n, 2: n, ... }" }
+ *                         distribution: { type: object, description: "{ 1: n, 2: n, 3: n, 4: n, 5: n }" }
  *                         byStore:
  *                           type: array
  *                           items:
@@ -273,14 +290,27 @@ const listFeedback = async (_req: Request, res: Response) => {
  *                               riderId: { type: string, format: uuid }
  *                               average: { type: number }
  *                               count: { type: integer }
+ *                         trend:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               date: { type: string, format: date }
+ *                               average: { type: number }
+ *                               count: { type: integer }
+ *       400:
+ *         description: "Invalid filter or a range over 366 days."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "Store not found."
  */
-const getFeedbackSummary = async (_req: Request, res: Response) => {
+const getFeedbackSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await FeedbackService.summary(resolveStoreScope(req), req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -18,6 +18,12 @@ jest.mock("../Queries/OtpChallenge.Query.js", () => ({
     findLatestFor: jest.fn(),
   },
 }));
+jest.mock("../Queries/TwoFactor.Query.js", () => ({
+  TwoFactorQuery: { findCredential: jest.fn().mockResolvedValue(null) },
+}));
+jest.mock("../Queries/UserToken.Query.js", () => ({
+  UserTokenQuery: { invalidateOutstanding: jest.fn().mockResolvedValue(undefined) },
+}));
 jest.mock("./OtpSender.Service.js", () => ({
   OtpSender: {
     sendSms: jest.fn().mockResolvedValue(undefined),

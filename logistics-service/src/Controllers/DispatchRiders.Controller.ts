@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { dispatchContext } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { DispatchRiderService } from "../Services/DispatchRider.Service.js";
 
 /**
  * @openapi
@@ -62,12 +63,14 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listFieldPayments = async (_req: Request, res: Response) => {
+const listFieldPayments = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.listFieldPayments(scope, req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -94,12 +97,14 @@ const listFieldPayments = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getFieldPayment = async (_req: Request, res: Response) => {
+const getFieldPayment = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.getFieldPayment(scope, req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -141,13 +146,14 @@ const getFieldPayment = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "The amount does not match what was collected."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const settleFieldPayment = async (req: Request, res: Response) => {
+const settleFieldPayment = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["settledAmount"]);
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.settleFieldPayment(actor, scope, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -207,12 +213,13 @@ const settleFieldPayment = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listRiders = async (_req: Request, res: Response) => {
+const listRiders = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.list(req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -259,12 +266,14 @@ const listRiders = async (_req: Request, res: Response) => {
  *                               activeJobs: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAvailableRiders = async (_req: Request, res: Response) => {
+const listAvailableRiders = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.available(scope, req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -291,12 +300,13 @@ const listAvailableRiders = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRider = async (_req: Request, res: Response) => {
+const getRider = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.get(req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -336,12 +346,13 @@ const getRider = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderCashBalanceForDispatch = async (_req: Request, res: Response) => {
+const getRiderCashBalanceForDispatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.cashBalance(req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -381,12 +392,13 @@ const getRiderCashBalanceForDispatch = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderLocation = async (_req: Request, res: Response) => {
+const getRiderLocation = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchRiderService.location(req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }

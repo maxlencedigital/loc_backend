@@ -1,7 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { actorOf } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { parsePage } from "../../commons/Utils/Pagination.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { DashboardService } from "../Services/Dashboard.Service.js";
 
 /**
  * @openapi
@@ -41,12 +44,11 @@ import { handleErrorResponse, handleNotImplementedResponse } from "../../commons
  *                         onTimePct: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDashboardOrders = async (_req: Request, res: Response) => {
+const getDashboardOrders = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await DashboardService.orders(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -137,12 +139,11 @@ const getDashboardOrders = async (_req: Request, res: Response) => {
  *                             equipmentServiceOverdue: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDashboardOverview = async (_req: Request, res: Response) => {
+const getDashboardOverview = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await DashboardService.overview(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -181,12 +182,11 @@ const getDashboardOverview = async (_req: Request, res: Response) => {
  *                         overdueTraining: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDashboardPeople = async (_req: Request, res: Response) => {
+const getDashboardPeople = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await DashboardService.people(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -239,12 +239,11 @@ const getDashboardPeople = async (_req: Request, res: Response) => {
  *                               orders: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDashboardRevenue = async (_req: Request, res: Response) => {
+const getDashboardRevenue = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await DashboardService.revenue(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -288,12 +287,11 @@ const getDashboardRevenue = async (_req: Request, res: Response) => {
  *                               link: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDashboardRisks = async (_req: Request, res: Response) => {
+const getDashboardRisks = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await DashboardService.risks(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -343,12 +341,11 @@ const getDashboardRisks = async (_req: Request, res: Response) => {
  *                               average: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDashboardSatisfaction = async (_req: Request, res: Response) => {
+const getDashboardSatisfaction = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await DashboardService.satisfaction(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -399,12 +396,11 @@ const getDashboardSatisfaction = async (_req: Request, res: Response) => {
  *                               satisfaction: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getDashboardStores = async (_req: Request, res: Response) => {
+const getDashboardStores = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await DashboardService.stores(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

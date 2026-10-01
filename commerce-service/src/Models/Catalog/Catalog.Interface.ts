@@ -57,4 +57,9 @@ export interface IPricingList {
   storeId: string | null;
   customerType: CustomerType | null;
   rows: Pick<IPriceRow, "serviceId" | "garment" | "category" | "ratePaise" | "expressRatePaise">[];
+  // Set only on the global / area / store override lists (see PricingOverlay.Query): they
+  // outrank plain lists by this number and price exact garments only, never a coarse booking.
+  rank?: number;
+  overlay?: boolean;
+  source?: "global" | "area" | "store";
 }

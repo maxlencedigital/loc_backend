@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { dispatchContext } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { DispatchJobService } from "../Services/DispatchJob.Service.js";
 
 /**
  * @openapi
@@ -41,17 +42,20 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *     responses:
  *       201:
  *         description: "Created."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createJob = async (req: Request, res: Response) => {
+const createJob = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["orderId", "type", "storeId"]);
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: created, result: await DispatchJobService.create(actor, scope, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -118,12 +122,14 @@ const createJob = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listJobs = async (_req: Request, res: Response) => {
+const listJobs = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.list(scope, req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -163,17 +169,20 @@ const listJobs = async (_req: Request, res: Response) => {
  *                       properties:
  *                         assigned: { type: integer }
  *                         unassigned: { type: integer }
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const autoAssignJobs = async (req: Request, res: Response) => {
+const autoAssignJobs = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["storeId"]);
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.autoAssign(actor, scope, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -220,12 +229,14 @@ const autoAssignJobs = async (req: Request, res: Response) => {
  *                               orderNumber: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listUnassignedJobs = async (_req: Request, res: Response) => {
+const listUnassignedJobs = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.unassigned(scope, req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -252,12 +263,14 @@ const listUnassignedJobs = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getJob = async (_req: Request, res: Response) => {
+const getJob = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.get(scope, req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -301,18 +314,22 @@ const getJob = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateJob = async (_req: Request, res: Response) => {
+const updateJob = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.update(actor, scope, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -352,13 +369,14 @@ const updateJob = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "That rider is not available or not eligible."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const assignJob = async (req: Request, res: Response) => {
+const assignJob = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["riderId"]);
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.assign(actor, scope, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -390,19 +408,22 @@ const assignJob = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const cancelJob = async (req: Request, res: Response) => {
+const cancelJob = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["reason"]);
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.cancel(actor, scope, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -452,12 +473,14 @@ const cancelJob = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getJobProof = async (_req: Request, res: Response) => {
+const getJobProof = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.proof(scope, req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -490,19 +513,22 @@ const getJobProof = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reassignJob = async (req: Request, res: Response) => {
+const reassignJob = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["riderId", "reason"]);
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.reassign(actor, scope, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -548,12 +574,14 @@ const reassignJob = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getJobTimeline = async (_req: Request, res: Response) => {
+const getJobTimeline = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.timeline(scope, req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -599,12 +627,14 @@ const getJobTimeline = async (_req: Request, res: Response) => {
  *                               distanceKm: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listRoutes = async (_req: Request, res: Response) => {
+const listRoutes = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const { scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.listRoutes(scope, req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -651,17 +681,20 @@ const listRoutes = async (_req: Request, res: Response) => {
  *                               sequence: { type: integer }
  *                               etaMinutes: { type: integer }
  *                         totalDistanceKm: { type: number }
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const optimizeRoute = async (req: Request, res: Response) => {
+const optimizeRoute = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["riderId", "date"]);
-    return handleNotImplementedResponse(res);
+    const { actor, scope } = dispatchContext(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await DispatchJobService.optimizeRoute(actor, scope, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }

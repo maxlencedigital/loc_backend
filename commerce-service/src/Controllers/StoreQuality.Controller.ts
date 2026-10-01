@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { QualityService } from "../Services/Quality.Service.js";
 
 /**
  * @openapi
@@ -37,13 +38,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const markCollectedAtCounter = async (req: Request, res: Response) => {
+const markCollectedAtCounter = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["collectedBy"]);
-    return handleNotImplementedResponse(res);
+    const result = await QualityService.collect(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Order handed over.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -91,13 +90,11 @@ const markCollectedAtCounter = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const recordQualityCheck = async (req: Request, res: Response) => {
+const recordQualityCheck = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["results"]);
-    return handleNotImplementedResponse(res);
+    const result = await QualityService.recordQualityCheck(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Quality check recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -124,12 +121,11 @@ const recordQualityCheck = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getQualityCheck = async (_req: Request, res: Response) => {
+const getQualityCheck = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await QualityService.getQualityCheck(req.params.id as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -178,12 +174,11 @@ const getQualityCheck = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const markOrderReady = async (_req: Request, res: Response) => {
+const markOrderReady = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await QualityService.markOrderReady(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Order is packed and ready.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

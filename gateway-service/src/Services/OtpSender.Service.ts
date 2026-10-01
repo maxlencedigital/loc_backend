@@ -117,7 +117,13 @@ const getTransporter = (): Transporter => {
 
 const EMAIL_API_TIMEOUT_MS = 10_000;
 
-const otpEmail = (code: string) => ({
+interface EmailMessage {
+  subject: string;
+  text: string;
+  html: string;
+}
+
+const otpEmail = (code: string): EmailMessage => ({
   subject: "Your LOC verification code",
   text:
     `${code} is your LOC verification code. It expires in 5 minutes.\n\n` +
@@ -130,11 +136,10 @@ const otpEmail = (code: string) => ({
 
 // Sends over HTTPS, which Render's free tier allows. Throws on any non-2xx so the
 // caller reports a real delivery failure instead of a silent success.
-const sendEmailByApi = async (to: string, code: string): Promise<void> => {
+const sendEmailByApi = async (to: string, message: EmailMessage): Promise<void> => {
   const provider = emailApiProvider() as EmailApiProvider;
   const apiKey = process.env.EMAIL_API_KEY as string;
   const from = process.env.EMAIL_FROM as string;
-  const message = otpEmail(code);
 
   const request: { url: string; headers: Record<string, string>; body: unknown } =
     provider === "brevo"
@@ -167,36 +172,79 @@ const sendEmailByApi = async (to: string, code: string): Promise<void> => {
   }
 };
 
+// Hands one message to whichever email path is configured; any failure is the same 503.
+const deliverEmail = async (to: string, message: EmailMessage): Promise<void> => {
+  try {
+    if (emailApiConfigured()) {
+      await sendEmailByApi(to, message);
+      return;
+    }
+    await getTransporter().sendMail({
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
+  } catch (error) {
+    console.error(`[OTP][email] delivery failed for ${to}:`, (error as Error).message);
+    throw new CustomException(
+      "Could not send the verification code right now. Please try again.",
+      serviceUnavailable
+    );
+  }
+};
+
 const sendEmail = async (to: string, code: string): Promise<void> => {
   try {
     if (!emailConfigured()) {
       logToConsole("email", to, code);
       return;
     }
-
-    try {
-      if (emailApiConfigured()) {
-        await sendEmailByApi(to, code);
-        return;
-      }
-      const message = otpEmail(code);
-      await getTransporter().sendMail({
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-        to,
-        subject: message.subject,
-        text: message.text,
-        html: message.html,
-      });
-    } catch (error) {
-      console.error(`[OTP][email] delivery failed for ${to}:`, (error as Error).message);
-      throw new CustomException(
-        "Could not send the verification code right now. Please try again.",
-        serviceUnavailable
-      );
-    }
+    await deliverEmail(to, otpEmail(code));
   } catch (error) {
     throw toCustomException(error);
   }
 };
 
-export const OtpSender = { sendSms, sendEmail, smsConfigured, emailConfigured };
+export type LinkEmailKind = "invite" | "reset";
+
+// Invitation and admin-issued reset links. DASHBOARD_URL turns the token into a clickable link;
+// without it the token itself is in the message. Both kinds are redeemed at /accept-invite.
+const linkEmail = (kind: LinkEmailKind, token: string, validForHours: number): EmailMessage => {
+  const base = process.env.DASHBOARD_URL?.trim().replace(/\/+$/, "");
+  const link = base ? `${base}/accept-invite?token=${encodeURIComponent(token)}` : null;
+  const intro =
+    kind === "invite"
+      ? "You have been invited to LOC. Set your password to finish creating your account."
+      : "An administrator has started a password reset for your LOC account.";
+  const how = link ? `Open this link: ${link}` : `Your one-time code is: ${token}`;
+  const footer = `It works once and expires in ${validForHours} hours. If you did not expect it, ignore this email.`;
+  return {
+    subject: kind === "invite" ? "You are invited to LOC" : "Reset your LOC password",
+    text: [intro, how, footer].join("\n\n"),
+    html:
+      `<p>${intro}</p>` +
+      (link ? `<p><a href="${link}">Set your password</a></p>` : `<p style="font-family:monospace">${token}</p>`) +
+      `<p style="color:#666">${footer}</p>`,
+  };
+};
+
+const sendLinkEmail = async (to: string, kind: LinkEmailKind, token: string, validForHours: number): Promise<void> => {
+  try {
+    if (!emailConfigured()) {
+      console.log(`[LINK][email] kind=${kind} to=${to} token=${token}`);
+      if (process.env.NODE_ENV === "production") {
+        console.error("[LINK] No email provider configured while NODE_ENV=production — the message was NOT delivered.");
+      }
+      return;
+    }
+    await deliverEmail(to, linkEmail(kind, token, validForHours)).catch(() => {
+      throw new CustomException("Could not send the email right now. Please try again.", serviceUnavailable);
+    });
+  } catch (error) {
+    throw toCustomException(error);
+  }
+};
+
+export const OtpSender = { sendSms, sendEmail, sendLinkEmail, smsConfigured, emailConfigured };

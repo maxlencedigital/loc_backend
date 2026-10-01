@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { TrainingService } from "../Services/Training.Service.js";
 
 /**
  * @openapi
@@ -31,13 +32,10 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const assignTraining = async (req: Request, res: Response) => {
+const assignTraining = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["courseId", "employeeIds"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await TrainingService.assign(req.user as RequestUser, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -98,12 +96,10 @@ const assignTraining = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listTrainingAssignments = async (_req: Request, res: Response) => {
+const listTrainingAssignments = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.listAssignments(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -138,16 +134,16 @@ const listTrainingAssignments = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "A completed record cannot be changed, or the change is not an allowed step."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateTrainingAssignment = async (_req: Request, res: Response) => {
+const updateTrainingAssignment = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.updateAssignment(resolveStoreScope(req), req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -201,12 +197,10 @@ const updateTrainingAssignment = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listTrainingCourses = async (_req: Request, res: Response) => {
+const listTrainingCourses = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.listCourses(req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -261,13 +255,10 @@ const listTrainingCourses = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createTrainingCourse = async (req: Request, res: Response) => {
+const createTrainingCourse = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["title", "category"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await TrainingService.createCourse(req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -313,12 +304,10 @@ const createTrainingCourse = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getTrainingCourse = async (_req: Request, res: Response) => {
+const getTrainingCourse = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.getCourse(req.params.id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -379,12 +368,10 @@ const getTrainingCourse = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateTrainingCourse = async (_req: Request, res: Response) => {
+const updateTrainingCourse = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.updateCourse(req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -407,16 +394,16 @@ const updateTrainingCourse = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "People still have the course open."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteTrainingCourse = async (_req: Request, res: Response) => {
+const deleteTrainingCourse = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.deleteCourse(req.params.id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -460,12 +447,10 @@ const deleteTrainingCourse = async (_req: Request, res: Response) => {
  *                               daysOverdue: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listOverdueTraining = async (_req: Request, res: Response) => {
+const listOverdueTraining = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.listOverdue(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -508,12 +493,10 @@ const listOverdueTraining = async (_req: Request, res: Response) => {
  *                               dueOn: { type: string, format: date }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listRefreshersDue = async (_req: Request, res: Response) => {
+const listRefreshersDue = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.listRefreshersDue(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -550,12 +533,10 @@ const listRefreshersDue = async (_req: Request, res: Response) => {
  *                               courseIds: { type: array, items: { type: string, format: uuid } }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listTrainingRequirements = async (_req: Request, res: Response) => {
+const listTrainingRequirements = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.listRequirements() }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -593,13 +574,10 @@ const listTrainingRequirements = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setTrainingRequirements = async (req: Request, res: Response) => {
+const setTrainingRequirements = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["courseIds"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await TrainingService.setRequirements(req.params.role, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

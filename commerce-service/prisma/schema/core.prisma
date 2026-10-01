@@ -10,18 +10,6 @@
 // is what keeps "no service reads another's tables" real rather than a
 // convention, given the five services share one free-tier database.
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  // No url here on purpose: Prisma 7 moved connection strings out of the
-  // schema. The CLI reads its URL from prisma.config.ts, and the running
-  // server passes its own through a driver adapter — see
-  // src/DB/Prisma.Connection.Db.ts.
-}
-
 enum StoreStatus {
   live
   planned

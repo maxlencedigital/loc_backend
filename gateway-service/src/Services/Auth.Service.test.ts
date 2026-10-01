@@ -42,6 +42,12 @@ jest.mock("../Queries/OtpChallenge.Query.js", () => ({
 
 // Keeps OTP codes out of the test output, and makes it explicit that nothing
 // here actually dispatches an SMS or email.
+jest.mock("../Queries/TwoFactor.Query.js", () => ({
+  TwoFactorQuery: { findCredential: jest.fn().mockResolvedValue(null) },
+}));
+jest.mock("../Queries/UserToken.Query.js", () => ({
+  UserTokenQuery: { invalidateOutstanding: jest.fn().mockResolvedValue(undefined) },
+}));
 jest.mock("./OtpSender.Service.js", () => ({
   OtpSender: {
     // Must resolve, not return undefined: the anti-enumeration paths call

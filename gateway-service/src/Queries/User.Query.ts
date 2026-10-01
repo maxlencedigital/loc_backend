@@ -1,4 +1,5 @@
 import { prisma } from "../DB/Prisma.Connection.Db.js";
+import { Db } from "./RefreshToken.Query.js";
 import { IUser, IUserCreate, OAuthProvider, UserRole } from "../Models/User/User.Interface.js";
 
 // Returns the domain interface, not Prisma's generated type: everything above
@@ -52,9 +53,9 @@ const findByOAuthIdentity = async (
 
 // Throws if the row is gone rather than reporting success for a write that
 // never happened — which a password reset in particular must not swallow.
-const setPassword = async (id: string, passwordHash: string): Promise<void> => {
+const setPassword = async (id: string, passwordHash: string, db: Db = prisma): Promise<void> => {
   try {
-    await prisma.user.update({ where: { id }, data: { passwordHash } });
+    await db.user.update({ where: { id }, data: { passwordHash } });
   } catch (error) {
     throw error;
   }
@@ -147,6 +148,24 @@ const countActiveByRole = async (role: UserRole): Promise<number> => {
   }
 };
 
+// One indexed read for a whole batch of ids: the caller bounds the list, never a loop of lookups.
+const findManyByIds = async (ids: string[]): Promise<IUser[]> => {
+  try {
+    return await prisma.user.findMany({ where: { id: { in: ids } } });
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Only ever called with a number the owner just proved by OTP.
+const setVerifiedPhone = async (id: string, phoneNumber: string): Promise<IUser> => {
+  try {
+    return await prisma.user.update({ where: { id }, data: { phoneNumber, isPhoneVerified: true } });
+  } catch (error) {
+    throw error;
+  }
+};
+
 export const UserQuery = {
   create,
   findByEmail,
@@ -160,4 +179,6 @@ export const UserQuery = {
   updateProfile,
   setActive,
   countActiveByRole,
+  findManyByIds,
+  setVerifiedPhone,
 };

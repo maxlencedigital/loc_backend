@@ -1,0 +1,272 @@
+// P02: customer payments, complaints, support tickets and order feedback.
+//
+// References to core data (orders, customers) and to other services (gateway users, finance
+// payments, logistics riders) are plain uuid columns without a foreign key: the core models
+// belong to another package, and other services' rows are never joined. Money is integer paise.
+
+enum ComplaintType {
+  damaged_item
+  late_delivery
+  wrong_charge
+  missing_item
+  quality
+  rider_behaviour
+  other
+}
+
+enum ComplaintSeverity {
+  low
+  medium
+  high
+}
+
+enum ComplaintStatus {
+  open
+  assigned
+  in_progress
+  resolved
+  escalated
+  closed
+}
+
+enum ComplaintDecision {
+  refund
+  goodwill
+  reject
+  policy_exception
+}
+
+enum ComplaintSource {
+  customer
+  store
+}
+
+enum ComplaintEventKind {
+  created
+  comment
+  assigned
+  escalated
+  resolved
+  reopened
+  closed
+  photos_added
+}
+
+enum ComplaintActor {
+  customer
+  staff
+  system
+}
+
+enum SupportTicketStatus {
+  open
+  answered
+  closed
+}
+
+enum SupportMessageAuthor {
+  customer
+  support
+}
+
+enum CustomerPaymentStatus {
+  created
+  authorized
+  captured
+  failed
+}
+
+enum SavedPaymentMethodType {
+  card
+  upi
+}
+
+model Complaint {
+  id                String             @id @default(uuid()) @db.Uuid
+  orderId           String             @db.Uuid
+  // Snapshots of the order at the time, so the queue needs no join into the orders table.
+  orderRef          String
+  storeId           String             @db.Uuid
+  customerId        String             @db.Uuid
+  // The gateway user who raised it; null when a store logged it for a walk-in customer.
+  customerUserId    String?            @db.Uuid
+  source            ComplaintSource
+  type              ComplaintType
+  severity          ComplaintSeverity  @default(medium)
+  description       String
+  itemId            String?            @db.Uuid
+  status            ComplaintStatus    @default(open)
+  // "<orderId>:<type>" while the complaint is active, null once resolved or closed. The unique
+  // index on it is what stops two live complaints of one type on one order.
+  activeKey         String?            @unique(map: "uq_complaint_active_key")
+  assigneeId        String?            @db.Uuid
+  assigneeName      String?
+  assignedAt        DateTime?          @db.Timestamptz(6)
+  // SLA clock: first reply the customer can see, and the latest resolution.
+  firstResponseAt   DateTime?          @db.Timestamptz(6)
+  resolvedAt        DateTime?          @db.Timestamptz(6)
+  closedAt          DateTime?          @db.Timestamptz(6)
+  escalatedAt       DateTime?          @db.Timestamptz(6)
+  escalationReason  String?
+  decision          ComplaintDecision?
+  resolution        String?
+  refundAmountPaise Int?
+  goodwill          String?
+  // [{ url, caption?, contentType?, sizeBytes?, addedAt }]; references only, bounded to 10.
+  photos            Json               @default("[]")
+  reopenCount       Int                @default(0)
+  createdByUserId   String             @db.Uuid
+  idempotencyKey    String?
+  createdAt         DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(6)
+
+  events ComplaintEvent[]
+
+  @@unique([createdByUserId, idempotencyKey], map: "uq_complaint_creator_key")
+  @@index([storeId, createdAt(sort: Desc)], map: "idx_complaint_store_created")
+  @@index([storeId, status, createdAt(sort: Desc)], map: "idx_complaint_store_status_created")
+  @@index([status, createdAt(sort: Desc)], map: "idx_complaint_status_created")
+  @@index([createdAt(sort: Desc)], map: "idx_complaint_created")
+  @@index([type, createdAt(sort: Desc)], map: "idx_complaint_type_created")
+  @@index([assigneeId, createdAt(sort: Desc)], map: "idx_complaint_assignee_created")
+  @@index([customerUserId, createdAt(sort: Desc)], map: "idx_complaint_customer_created")
+  @@index([customerUserId, status, createdAt(sort: Desc)], map: "idx_complaint_customer_status_created")
+  @@index([orderId], map: "idx_complaint_order")
+  @@index([status, escalatedAt(sort: Desc)], map: "idx_complaint_status_escalated")
+  @@index([storeId, escalatedAt(sort: Desc)], map: "idx_complaint_store_escalated")
+  @@index([status, resolvedAt], map: "idx_complaint_status_resolved")
+  @@map("commerce_complaints")
+}
+
+// Append-only thread and audit trail: one row per comment, assignment and status change,
+// written in the same transaction as the change itself.
+model ComplaintEvent {
+  id          String             @id @default(uuid()) @db.Uuid
+  complaintId String             @db.Uuid
+  kind        ComplaintEventKind
+  actorRole   ComplaintActor
+  actorUserId String?            @db.Uuid
+  actorName   String
+  message     String?
+  // A staff-only note, never shown to the customer.
+  internal    Boolean            @default(false)
+  fromStatus  ComplaintStatus?
+  toStatus    ComplaintStatus?
+  createdAt   DateTime           @default(now()) @db.Timestamptz(6)
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId, createdAt], map: "idx_complaint_event_complaint_created")
+  @@map("commerce_complaint_events")
+}
+
+model SupportTicket {
+  id              String              @id @default(uuid()) @db.Uuid
+  customerUserId  String              @db.Uuid
+  subject         String
+  status          SupportTicketStatus @default(open)
+  orderId         String?             @db.Uuid
+  storeId         String?             @db.Uuid
+  messageCount    Int                 @default(0)
+  firstResponseAt DateTime?           @db.Timestamptz(6)
+  answeredAt      DateTime?           @db.Timestamptz(6)
+  closedAt        DateTime?           @db.Timestamptz(6)
+  idempotencyKey  String?
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+
+  messages SupportTicketMessage[]
+
+  @@unique([customerUserId, idempotencyKey], map: "uq_ticket_customer_key")
+  @@index([customerUserId, updatedAt(sort: Desc)], map: "idx_ticket_customer_updated")
+  @@index([customerUserId, status, updatedAt(sort: Desc)], map: "idx_ticket_customer_status_updated")
+  @@map("commerce_support_tickets")
+}
+
+model SupportTicketMessage {
+  id           String               @id @default(uuid()) @db.Uuid
+  ticketId     String               @db.Uuid
+  author       SupportMessageAuthor
+  authorUserId String?              @db.Uuid
+  authorName   String
+  message      String
+  createdAt    DateTime             @default(now()) @db.Timestamptz(6)
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt], map: "idx_ticket_message_ticket_created")
+  @@map("commerce_support_ticket_messages")
+}
+
+model OrderFeedback {
+  id             String   @id @default(uuid()) @db.Uuid
+  orderId        String   @db.Uuid
+  // Copied from the order so every dashboard aggregate is a single-table query.
+  storeId        String   @db.Uuid
+  customerId     String   @db.Uuid
+  customerUserId String   @db.Uuid
+  rating         Int
+  storeRating    Int?
+  riderRating    Int?
+  // Looked up from logistics when a rider rating is given; null if unknown.
+  riderId        String?  @db.Uuid
+  comment        String?
+  // UTC calendar day of createdAt, so the daily trend is a plain GROUP BY.
+  ratedOn        DateTime @db.Date
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([orderId, customerUserId], map: "uq_feedback_order_customer")
+  @@index([storeId, createdAt(sort: Desc)], map: "idx_feedback_store_created")
+  @@index([riderId, createdAt(sort: Desc)], map: "idx_feedback_rider_created")
+  @@index([rating, createdAt(sort: Desc)], map: "idx_feedback_rating_created")
+  @@index([createdAt(sort: Desc)], map: "idx_feedback_created")
+  @@index([ratedOn], map: "idx_feedback_rated_on")
+  @@map("commerce_order_feedback")
+}
+
+// One checkout attempt at finance for one order. The amount is always computed from the order
+// on the server; the paid total of an order is the sum of its captured attempts.
+model CustomerPayment {
+  id                String                @id @default(uuid()) @db.Uuid
+  orderId           String                @db.Uuid
+  orderRef          String
+  customerUserId    String                @db.Uuid
+  amountPaise       Int
+  currency          String                @default("INR")
+  method            String?
+  status            CustomerPaymentStatus @default(created)
+  financePaymentId  String?
+  razorpayOrderId   String                @unique(map: "uq_customer_payment_razorpay_order")
+  razorpayPaymentId String?
+  // The public checkout key, kept so a replayed initiate returns the identical payload.
+  keyId             String
+  idempotencyKey    String?
+  paidAt            DateTime?             @db.Timestamptz(6)
+  createdAt         DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime              @updatedAt @db.Timestamptz(6)
+
+  @@unique([customerUserId, idempotencyKey], map: "uq_customer_payment_key")
+  @@index([customerUserId, createdAt(sort: Desc)], map: "idx_customer_payment_customer_created")
+  @@index([orderId, status], map: "idx_customer_payment_order_status")
+  @@map("commerce_customer_payments")
+}
+
+// A saved method is only the gateway's token reference plus masked display text. A card number
+// never reaches this service.
+model SavedPaymentMethod {
+  id             String                 @id @default(uuid()) @db.Uuid
+  customerUserId String                 @db.Uuid
+  type           SavedPaymentMethodType
+  providerToken  String
+  label          String
+  brand          String?
+  last4          String?
+  isDefault      Boolean                @default(false)
+  // The customer's id while this is their default, else null; unique, so at most one default.
+  defaultKey     String?                @unique(map: "uq_saved_method_default")
+  createdAt      DateTime               @default(now()) @db.Timestamptz(6)
+
+  @@unique([customerUserId, providerToken], map: "uq_saved_method_token")
+  @@index([customerUserId, createdAt(sort: Desc)], map: "idx_saved_method_customer_created")
+  @@map("commerce_saved_payment_methods")
+}

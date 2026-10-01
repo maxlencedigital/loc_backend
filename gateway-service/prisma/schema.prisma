@@ -45,6 +45,7 @@ enum OtpPurpose {
   register
   login
   password_reset
+  phone_change
 }
 
 model User {
@@ -84,6 +85,11 @@ model User {
   lastLoginAt DateTime? @db.Timestamptz(6)
 
   refreshTokens RefreshToken[]
+
+  twoFactor           TwoFactorCredential?
+  twoFactorRecovery   TwoFactorRecoveryCode[]
+  twoFactorChallenges TwoFactorChallenge[]
+  userTokens          UserToken[]
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -184,11 +190,104 @@ model RefreshToken {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
   revokedAt     DateTime? @db.Timestamptz(6)
-  /// rotated | logout | logout_all | reuse_detected | password_reset | deactivated
+  /// rotated | logout | logout_all | reuse_detected | password_reset | deactivated | password_change | store_changed
   revokedReason String?   @db.VarChar(30)
 
   @@index([userId], map: "idx_refresh_user")
   @@index([familyId], map: "idx_refresh_family")
   @@index([expiresAt], map: "idx_refresh_expires")
   @@map("refresh_tokens")
+}
+
+/// Authenticator-app (TOTP) enrolment, one per user. `enabledAt` is null while the user has
+/// scanned the secret but not yet proved it with a first code: a pending row never gates sign-in.
+model TwoFactorCredential {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// AES-256-GCM envelope (v1.iv.tag.ciphertext) of the TOTP secret. Never the plain secret.
+  secretEnc String @db.VarChar(255)
+
+  enabledAt DateTime? @db.Timestamptz(6)
+
+  /// The last accepted RFC 6238 time-step. A code is accepted only for a later step, so a
+  /// code that was already used (or sniffed) cannot be replayed inside its 30 second window.
+  lastUsedStep Int @default(0)
+
+  /// Consecutive wrong codes across every flow; at the limit the credential locks for a while.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("two_factor_credentials")
+}
+
+/// Single-use backup codes, shown once when 2FA is switched on. Only bcrypt hashes are stored.
+model TwoFactorRecoveryCode {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash String @db.VarChar(255)
+
+  /// Set atomically (where usedAt is null), so one code can never be spent twice.
+  usedAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([userId], map: "idx_2fa_recovery_user")
+  @@map("two_factor_recovery_codes")
+}
+
+/// The pause between a correct password and the second factor. Short-lived and single-use;
+/// the client holds its id together with an HMAC-signed token bound to the same id and user.
+model TwoFactorChallenge {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt  DateTime  @db.Timestamptz(6)
+  consumedAt DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([userId], map: "idx_2fa_challenge_user")
+  @@index([expiresAt], map: "idx_2fa_challenge_expires")
+  @@map("two_factor_challenges")
+}
+
+enum UserTokenPurpose {
+  invite
+  password_reset
+}
+
+/// One-time links an admin issues: an invitation to set a first password, or a password reset.
+/// Only the SHA-256 of the 256-bit token is stored, so a database leak yields nothing usable.
+model UserToken {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  purpose UserTokenPurpose
+
+  tokenHash String @unique @db.Char(64)
+
+  expiresAt  DateTime  @db.Timestamptz(6)
+  /// Set atomically (where consumedAt is null), so a token is redeemed at most once.
+  consumedAt DateTime? @db.Timestamptz(6)
+
+  /// The admin who issued it. Not a foreign key: it is an audit pointer, and an admin may be removed later.
+  createdById String? @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([userId, purpose], map: "idx_user_token_user_purpose")
+  @@index([expiresAt], map: "idx_user_token_expires")
+  @@map("user_tokens")
 }

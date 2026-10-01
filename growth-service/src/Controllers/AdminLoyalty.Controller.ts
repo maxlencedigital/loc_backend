@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { LoyaltyService } from "../Services/Loyalty.Service.js";
+import { RetentionService } from "../Services/Retention.Service.js";
+import { actorId } from "./Actor.js";
 
 /**
  * @openapi
@@ -38,12 +40,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getLoyaltyAccount = async (_req: Request, res: Response) => {
+const getLoyaltyAccount = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.getAccount(req.params.customerId);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -82,13 +83,11 @@ const getLoyaltyAccount = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const adjustLoyaltyPoints = async (req: Request, res: Response) => {
+const adjustLoyaltyPoints = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["points", "reason"]);
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.adjust(req.params.customerId, actorId(req), req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -129,12 +128,11 @@ const adjustLoyaltyPoints = async (req: Request, res: Response) => {
  *                               benefits: { type: array, items: { type: string } }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getLoyaltyProgram = async (_req: Request, res: Response) => {
+const getLoyaltyProgram = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.getProgram();
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -176,13 +174,11 @@ const getLoyaltyProgram = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setLoyaltyProgram = async (req: Request, res: Response) => {
+const setLoyaltyProgram = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["pointsPerRupee", "redemptionValue", "tiers"]);
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.setProgram(req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -241,12 +237,11 @@ const setLoyaltyProgram = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listLoyaltyTransactions = async (_req: Request, res: Response) => {
+const listLoyaltyTransactions = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.listTransactions(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -296,12 +291,11 @@ const listLoyaltyTransactions = async (_req: Request, res: Response) => {
  *                               reasons: { type: array, items: { type: string } }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAtRiskCustomers = async (_req: Request, res: Response) => {
+const listAtRiskCustomers = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await RetentionService.listAtRisk(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -347,12 +341,11 @@ const listAtRiskCustomers = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCustomerRetention = async (_req: Request, res: Response) => {
+const getCustomerRetention = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await RetentionService.getCustomer(req.params.customerId);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -392,13 +385,11 @@ const getCustomerRetention = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const sendWinBack = async (req: Request, res: Response) => {
+const sendWinBack = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["channel"]);
-    return handleNotImplementedResponse(res);
+    const result = await RetentionService.sendWinBack(req.params.customerId, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -435,12 +426,11 @@ const sendWinBack = async (req: Request, res: Response) => {
  *                         repeatRatePct: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRetentionSummary = async (_req: Request, res: Response) => {
+const getRetentionSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await RetentionService.getSummary(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

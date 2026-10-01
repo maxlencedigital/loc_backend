@@ -21,6 +21,10 @@ jest.mock("../Queries/User.Query.js", () => ({
   },
 }));
 
+jest.mock("../Queries/TwoFactor.Query.js", () => ({
+  TwoFactorQuery: { findCredential: jest.fn().mockResolvedValue(null) },
+}));
+
 import router from "./Gateway.Routes.js";
 import { UserQuery } from "../Queries/User.Query.js";
 

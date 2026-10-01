@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { AttendanceService } from "../Services/Attendance.Service.js";
+import { RosterService } from "../Services/Roster.Service.js";
 
 /**
  * @openapi
@@ -21,6 +23,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *       - in: query
  *         name: storeId
  *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, description: "1-based page number" }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, description: "page size, max 100" }
  *     responses:
  *       200:
  *         description: "OK."
@@ -45,14 +53,15 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                               status: { type: string, enum: [present, late, absent, on_leave, off] }
  *                               clockIn: { type: string, format: date-time }
  *                               clockOut: { type: string, format: date-time }
+ *                         page: { type: integer }
+ *                         limit: { type: integer }
+ *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAttendanceForDay = async (_req: Request, res: Response) => {
+const getAttendanceForDay = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await AttendanceService.getForDay(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -87,13 +96,10 @@ const getAttendanceForDay = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createAttendanceCorrection = async (req: Request, res: Response) => {
+const createAttendanceCorrection = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["employeeId", "date", "reason"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await AttendanceService.createCorrection(resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -152,12 +158,10 @@ const createAttendanceCorrection = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAttendanceCorrections = async (_req: Request, res: Response) => {
+const listAttendanceCorrections = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await AttendanceService.listCorrections(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -202,16 +206,16 @@ const listAttendanceCorrections = async (_req: Request, res: Response) => {
  *                               status: { type: string, enum: [present, late, absent, on_leave, off] }
  *                               clockIn: { type: string, format: date-time }
  *                               clockOut: { type: string, format: date-time }
+ *                         employeeId: { type: string, format: uuid }
+ *                         month: { type: string, description: "YYYY-MM" }
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getEmployeeAttendance = async (_req: Request, res: Response) => {
+const getEmployeeAttendance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await AttendanceService.getEmployeeMonth(req.params.id, resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -236,6 +240,12 @@ const getEmployeeAttendance = async (_req: Request, res: Response) => {
  *       - in: query
  *         name: to
  *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, description: "1-based page number" }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, description: "page size, max 100" }
  *     responses:
  *       200:
  *         description: "OK."
@@ -260,14 +270,19 @@ const getEmployeeAttendance = async (_req: Request, res: Response) => {
  *                               late: { type: integer }
  *                               absent: { type: integer }
  *                               leave: { type: integer }
+ *                               workingDays: { type: integer, description: "days on the books, holidays excluded" }
+ *                               attendanceRatePct: { type: number, nullable: true }
+ *                         from: { type: string, format: date }
+ *                         to: { type: string, format: date }
+ *                         page: { type: integer }
+ *                         limit: { type: integer }
+ *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAttendanceSummary = async (_req: Request, res: Response) => {
+const getAttendanceSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await AttendanceService.getSummary(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -300,15 +315,14 @@ const getAttendanceSummary = async (_req: Request, res: Response) => {
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The person already has an overlapping shift that day."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createRosterEntry = async (req: Request, res: Response) => {
+const createRosterEntry = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["employeeId", "storeId", "date", "shiftStart", "shiftEnd"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await RosterService.create(resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -368,12 +382,10 @@ const createRosterEntry = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listRosterEntries = async (_req: Request, res: Response) => {
+const listRosterEntries = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await RosterService.list(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -422,12 +434,10 @@ const listRosterEntries = async (_req: Request, res: Response) => {
  *                               gap: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRosterCoverage = async (_req: Request, res: Response) => {
+const getRosterCoverage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await RosterService.coverage(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -454,12 +464,10 @@ const getRosterCoverage = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteRosterEntry = async (_req: Request, res: Response) => {
+const deleteRosterEntry = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await RosterService.remove(req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

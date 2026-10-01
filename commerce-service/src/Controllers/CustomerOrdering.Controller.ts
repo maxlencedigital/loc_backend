@@ -1,8 +1,8 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { CustomerOrderingService } from "../Services/CustomerOrdering.Service.js";
 
 /**
  * @openapi
@@ -37,12 +37,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                               options: { type: array, items: { type: string } }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCareQuestions = async (_req: Request, res: Response) => {
+const getCareQuestions = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.getCareQuestions(user);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Care questions.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -119,13 +119,12 @@ const getCareQuestions = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const evaluateCareAnswers = async (req: Request, res: Response) => {
+const evaluateCareAnswers = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["answers"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.evaluateCareAnswers(user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Care answers evaluated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -137,14 +136,17 @@ const evaluateCareAnswers = async (req: Request, res: Response) => {
  *   get:
  *     operationId: getMyCatalog
  *     summary: "What can I order here? Categories, services and prices for my address"
- *     description: "**Who can call this:** customer (super_admin always allowed). Prices already reflect the global price list plus any area or store override."
+ *     description: "**Who can call this:** customer (super_admin always allowed). Prices already reflect the global price list plus any store override. The store is the optional storeId, else a live store in the address city, else the first live store. Garment types are derived from the price lists. Extras beyond the contract are services[].unit and prices[].expressPrice."
  *     tags: ["Customer - Ordering"]
  *     x-roles: [customer]
  *     parameters:
  *       - in: query
  *         name: addressId
  *         required: true
- *         schema: { type: string, format: uuid, description: "resolves the store and any local pricing" }
+ *         schema: { type: string, format: uuid, description: "one of my addresses; resolves the store and any local pricing" }
+ *       - in: query
+ *         name: storeId
+ *         schema: { type: string, format: uuid, description: "optional live store; default is chosen from the address" }
  *     responses:
  *       200:
  *         description: "OK."
@@ -197,12 +199,12 @@ const evaluateCareAnswers = async (req: Request, res: Response) => {
  *                               price: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMyCatalog = async (_req: Request, res: Response) => {
+const getMyCatalog = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.getMyCatalog(user, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Catalogue.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -214,7 +216,7 @@ const getMyCatalog = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: checkExpressAvailability
  *     summary: "Can Express honestly be offered right now?"
- *     description: "**Who can call this:** customer (super_admin always allowed). True only when a machine, staff on shift and a rider are all genuinely available; otherwise says why and offers the next realistic time."
+ *     description: "**Who can call this:** customer (super_admin always allowed). The rule is capacity only. Express is on while the store is live and its unfinished kilograms plus this basket stay within 80 percent of capacityKgPerDay. Staff and rider cover are not known here, so those two constraints are null. When off, nextAvailableSlot is the first open slot at least 24 hours away."
  *     tags: ["Customer - Ordering"]
  *     x-roles: [customer]
  *     requestBody:
@@ -269,13 +271,12 @@ const getMyCatalog = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const checkExpressAvailability = async (req: Request, res: Response) => {
+const checkExpressAvailability = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["addressId"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.checkExpressAvailability(user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Express availability.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -287,9 +288,14 @@ const checkExpressAvailability = async (req: Request, res: Response) => {
  *   post:
  *     operationId: placeMyOrder
  *     summary: "Place an order"
- *     description: "**Who can call this:** customer (super_admin always allowed)."
+ *     description: "**Who can call this:** customer (super_admin always allowed). Prices come from the server. The store is the pickup slot's store. Send an Idempotency-Key header (8 to 100 characters) to make a retry return the original order. couponCode, customerPackageId and paymentMethod package are refused with 400 until those features exist."
  *     tags: ["Customer - Ordering"]
  *     x-roles: [customer]
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: false
+ *         schema: { type: string, minLength: 8, maxLength: 100 }
  *     requestBody:
  *       required: true
  *       content:
@@ -349,14 +355,13 @@ const checkExpressAvailability = async (req: Request, res: Response) => {
  *       403:
  *         description: Your role is not allowed to call this.
  *       409:
- *         description: "Express is no longer available, or the chosen slot was just taken."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *         description: "Express is no longer available, or the chosen slot was full or too close to start."
  */
-const placeMyOrder = async (req: Request, res: Response) => {
+const placeMyOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["addressId", "items", "pickupSlotId", "paymentMethod"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.placeMyOrder(user, req.header("idempotency-key"), req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Order placed.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -368,7 +373,7 @@ const placeMyOrder = async (req: Request, res: Response) => {
  *   post:
  *     operationId: uploadMyOrderPhotos
  *     summary: "Attach optional photos to an order (an existing stain, a loose button)"
- *     description: "**Who can call this:** customer (super_admin always allowed). Multipart. Always optional."
+ *     description: "**Who can call this:** customer (super_admin always allowed). Always optional. There is no file storage yet, so this takes JSON references to images already hosted over https (up to 5 per order) instead of multipart uploads."
  *     tags: ["Customer - Ordering"]
  *     x-roles: [customer]
  *     parameters:
@@ -377,15 +382,24 @@ const placeMyOrder = async (req: Request, res: Response) => {
  *         required: true
  *         schema: { type: string }
  *     requestBody:
- *       required: false
+ *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
+ *             required: [photos]
  *             properties:
- *               photos: { type: string, format: binary }
- *               itemId: { type: string, format: uuid }
- *               note: { type: string }
+ *               photos:
+ *                 type: array
+ *                 minItems: 1
+ *                 maxItems: 5
+ *                 items:
+ *                   type: object
+ *                   required: [url]
+ *                   properties:
+ *                     url: { type: string, format: uri, description: "https link to the image" }
+ *                     itemId: { type: string, format: uuid, description: "an item of this order" }
+ *                     note: { type: string }
  *     responses:
  *       201:
  *         description: "Created."
@@ -395,12 +409,12 @@ const placeMyOrder = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadMyOrderPhotos = async (_req: Request, res: Response) => {
+const uploadMyOrderPhotos = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.uploadMyOrderPhotos(user, req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Photos added.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -426,6 +440,9 @@ const uploadMyOrderPhotos = async (_req: Request, res: Response) => {
  *         name: addressId
  *         required: true
  *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: storeId
+ *         schema: { type: string, format: uuid, description: "optional live store" }
  *       - in: query
  *         name: date
  *         required: true
@@ -460,12 +477,12 @@ const uploadMyOrderPhotos = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listPickupSlots = async (_req: Request, res: Response) => {
+const listPickupSlots = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.listPickupSlots(user, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Pickup slots.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -535,13 +552,12 @@ const listPickupSlots = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPriceQuote = async (req: Request, res: Response) => {
+const getPriceQuote = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["addressId", "items"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrderingService.getPriceQuote(user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Price quote.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

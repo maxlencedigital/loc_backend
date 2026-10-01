@@ -16,6 +16,7 @@ import { toDashboardUser } from "../Models/User/DashboardUser.js";
 import { JWT_ALGORITHM, getJwtSecret } from "./Token.js";
 import { SessionService } from "./Session.Service.js";
 import { decoyCode, otpInResponse } from "./OtpDelivery.js";
+import { TwoFactorService } from "./TwoFactor.Service.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -140,6 +141,9 @@ const authenticate = async (email: unknown, password: unknown) => {
 const login = async (email: string, password: string) => {
   try {
     const user = await authenticate(email, password);
+    // An account with a second factor stops here: no session until POST /auth/2fa/verify.
+    const challenge = await TwoFactorService.challengeIfRequired(user);
+    if (challenge) return challenge;
     const loggedIn = await UserQuery.recordLogin(user.id);
     return { ...(await SessionService.issue(loggedIn)), user: toDashboardUser(loggedIn) };
   } catch (error) {
@@ -178,7 +182,7 @@ const getProfile = async (userId: string) => {
     if (!user || !user.isActive) {
       throw new CustomException("Your account is no longer active.", unauthorized);
     }
-    return toDashboardUser(user);
+    return { ...toDashboardUser(user), twoFactorEnabled: await TwoFactorService.isEnabled(user.id) };
   } catch (error) {
     throw toCustomException(error);
   }
@@ -392,7 +396,8 @@ const loginOtpVerify = async (verificationId: string, otp: string) => {
     if (!user || !user.isActive) {
       throw new CustomException("That code is invalid or has expired.", badRequest);
     }
-    return await issueTokenFor(user);
+    // A phone code is one factor; an account with an authenticator still owes the second.
+    return (await TwoFactorService.challengeIfRequired(user)) ?? (await issueTokenFor(user));
   } catch (error) {
     throw toCustomException(error);
   }
@@ -442,6 +447,9 @@ const loginOAuth = async (provider: OAuthProvider, token: string) => {
     if (!user.isActive) {
       throw new CustomException("This account has been deactivated.", forbidden);
     }
+
+    const challenge = await TwoFactorService.challengeIfRequired(user);
+    if (challenge) return challenge;
 
     return {
       ...(await issueTokenFor(user)),

@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { MachinesService } from "../Services/Machines.Service.js";
 
 /**
  * @openapi
@@ -60,12 +61,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMachines = async (_req: Request, res: Response) => {
+const listMachines = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.listMachines(resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -115,12 +115,11 @@ const listMachines = async (_req: Request, res: Response) => {
  *                               freeAt: { type: string, format: date-time }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAvailableMachines = async (_req: Request, res: Response) => {
+const listAvailableMachines = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.listAvailableMachines(resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -147,12 +146,11 @@ const listAvailableMachines = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMachine = async (_req: Request, res: Response) => {
+const getMachine = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.getMachine(req.params.id as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -200,13 +198,11 @@ const getMachine = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const recordMachineDailyCheck = async (req: Request, res: Response) => {
+const recordMachineDailyCheck = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["status"]);
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.recordMachineDailyCheck(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Check recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -268,12 +264,11 @@ const recordMachineDailyCheck = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMachineDailyChecks = async (_req: Request, res: Response) => {
+const listMachineDailyChecks = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.listMachineDailyChecks(req.params.id as string, resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -312,13 +307,11 @@ const listMachineDailyChecks = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reportMachineFault = async (req: Request, res: Response) => {
+const reportMachineFault = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["description"]);
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.reportMachineFault(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Fault reported.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -345,12 +338,11 @@ const reportMachineFault = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const releaseMachine = async (_req: Request, res: Response) => {
+const releaseMachine = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.releaseMachine(req.params.id as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Machine released.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -392,13 +384,11 @@ const releaseMachine = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "The machine is already running or reserved."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reserveMachine = async (req: Request, res: Response) => {
+const reserveMachine = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["batchId"]);
-    return handleNotImplementedResponse(res);
+    const result = await MachinesService.reserveMachine(req.params.id as string, resolveStoreScope(req), req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Machine reserved.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

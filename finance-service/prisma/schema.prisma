@@ -1,13 +1,9 @@
-// Finance service data model — payments, refunds, settlements and invoicing.
+// Finance service data model: payments, refunds, reconciliation, expenses, GST, ledger,
+// receivables and cash. Money is integer paise everywhere; dates that mean a calendar day
+// (expense date, cash day, GST month) are DATE columns so no timezone can move them.
 //
-// No models yet: the routes exist as documented contracts returning 501 while
-// the service logic is built out module by module (see
-// src/Routes/Finance.Routes.ts). Models land here as each module is
-// implemented, one migration at a time.
-//
-// These tables live in their own Postgres schema (DB_SCHEMA=finance). That
-// is what keeps "no service reads another's tables" real rather than a
-// convention, given the five services share one free-tier database.
+// These tables live in their own Postgres schema (DB_SCHEMA=finance). That is what keeps
+// "no service reads another's tables" real, given the services share one database.
 
 generator client {
   provider = "prisma-client-js"
@@ -50,11 +46,27 @@ model Payment {
   amountMismatch     Boolean       @default(false)
   gatewayAmountPaise Int?
   createdByUserId    String?
+  // The store the payment belongs to when the caller knows it (a staff checkout, or commerce
+  // passing the order's store). Null when unknown; a plain reference, no foreign key.
+  storeId            String?       @db.Uuid
+  customerUserId     String?       @db.Uuid
+  // Idempotency-Key replay: (owner, key) is unique, the owner being the customer or the staff user.
+  idempotencyOwner   String?       @db.VarChar(64)
+  idempotencyKey     String?       @db.VarChar(128)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
+  refunds            Refund[]
+  mismatchResolution PaymentMismatchResolution?
+
+  @@unique([idempotencyOwner, idempotencyKey], map: "uq_payment_idempotency")
   @@index([orderRef], map: "idx_payment_order_ref")
   @@index([status], map: "idx_payment_status")
+  @@index([createdAt], map: "idx_payment_created")
+  @@index([status, createdAt], map: "idx_payment_status_created")
+  @@index([storeId, createdAt], map: "idx_payment_store_created")
+  @@index([method, createdAt], map: "idx_payment_method_created")
+  @@index([amountMismatch, createdAt], map: "idx_payment_mismatch_created")
   @@map("finance_payments")
 }
 
@@ -68,4 +80,457 @@ model PaymentWebhookEvent {
   receivedAt DateTime @default(now())
 
   @@map("finance_payment_webhook_events")
+}
+
+// ------------------------------------------------------------------ payments admin
+
+enum MismatchResolution {
+  matched
+  refunded
+  written_off
+  manual_adjust
+}
+
+// Append-only decision record for a payment whose gateway amount differed from the request.
+// One decision per payment: the unique paymentId is what makes a second resolve a 409.
+model PaymentMismatchResolution {
+  id               String             @id @default(uuid()) @db.Uuid
+  paymentId        String             @unique
+  payment          Payment            @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  resolution       MismatchResolution
+  note             String             @db.VarChar(1000)
+  resolvedByUserId String             @db.VarChar(64)
+  resolvedByName   String?            @db.VarChar(120)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
+
+  @@map("finance_payment_mismatch_resolutions")
+}
+
+enum RefundStatus {
+  requested
+  approved
+  processed
+  failed
+}
+
+// requested -> approved (sent to Razorpay) -> processed (confirmed by the refund.processed webhook),
+// or failed (Razorpay refused). requested and approved rows count against the refundable amount.
+model Refund {
+  id                String       @id @default(uuid()) @db.Uuid
+  paymentId         String
+  payment           Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  storeId           String?      @db.Uuid
+  amountPaise       Int
+  reason            String       @db.VarChar(500)
+  status            RefundStatus @default(requested)
+  idempotencyKey    String?      @db.VarChar(128)
+  razorpayRefundId  String?      @unique
+  failureReason     String?      @db.VarChar(300)
+  requestedByUserId String       @db.VarChar(64)
+  approvedByUserId  String?      @db.VarChar(64)
+  approvedAt        DateTime?    @db.Timestamptz(6)
+  processedAt       DateTime?    @db.Timestamptz(6)
+  createdAt         DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime     @updatedAt @db.Timestamptz(6)
+
+  @@unique([paymentId, idempotencyKey], map: "uq_refund_payment_key")
+  @@index([paymentId], map: "idx_refund_payment")
+  @@index([createdAt], map: "idx_refund_created")
+  @@index([status, createdAt], map: "idx_refund_status_created")
+  @@index([storeId, processedAt], map: "idx_refund_store_processed")
+  @@map("finance_refunds")
+}
+
+// ------------------------------------------------------------------ reconciliation
+
+enum ReconciliationSource {
+  bank
+  razorpay
+}
+
+model BankStatement {
+  id               String              @id @default(uuid()) @db.Uuid
+  bank             String?             @db.VarChar(80)
+  fileName         String              @db.VarChar(200)
+  lineCount        Int
+  skippedCount     Int
+  uploadedByUserId String              @db.VarChar(64)
+  createdAt        DateTime            @default(now()) @db.Timestamptz(6)
+  lines            BankStatementLine[]
+
+  @@index([createdAt], map: "idx_bank_statement_created")
+  @@map("finance_bank_statements")
+}
+
+// A credit is positive paise, a debit negative. lineHash makes re-uploading the same file a no-op.
+model BankStatementLine {
+  id          String        @id @default(uuid()) @db.Uuid
+  statementId String        @db.Uuid
+  statement   BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  date        DateTime      @db.Date
+  description String        @db.VarChar(300)
+  reference   String?       @db.VarChar(120)
+  amountPaise Int
+  lineHash    String        @unique @db.VarChar(64)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(6)
+
+  @@index([statementId], map: "idx_bank_line_statement")
+  @@index([date], map: "idx_bank_line_date")
+  @@map("finance_bank_statement_lines")
+}
+
+model ReconciliationRun {
+  id             String                    @id @default(uuid()) @db.Uuid
+  source         ReconciliationSource
+  fromDate       DateTime                  @db.Date
+  toDate         DateTime                  @db.Date
+  matched        Int
+  exceptionCount Int
+  // True when the run hit its row cap: the figures cover the first rows only.
+  truncated      Boolean                   @default(false)
+  ranByUserId    String                    @db.VarChar(64)
+  ranAt          DateTime                  @default(now()) @db.Timestamptz(6)
+  exceptions     ReconciliationException[]
+
+  @@index([ranAt], map: "idx_recon_run_ran_at")
+  @@map("finance_reconciliation_runs")
+}
+
+model ReconciliationException {
+  id            String            @id @default(uuid()) @db.Uuid
+  runId         String            @db.Uuid
+  run           ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  reference     String            @db.VarChar(120)
+  expectedPaise Int?
+  actualPaise   Int?
+  reason        String            @db.VarChar(40)
+  createdAt     DateTime          @default(now()) @db.Timestamptz(6)
+
+  @@index([runId], map: "idx_recon_exception_run")
+  @@map("finance_reconciliation_exceptions")
+}
+
+// ------------------------------------------------------------------ expenses
+
+enum SpendMode {
+  cash
+  bank
+  upi
+  card
+}
+
+enum ExpenseStatus {
+  recorded
+  approved
+  rejected
+  paid
+}
+
+model ExpenseCategory {
+  id        String            @id @default(uuid()) @db.Uuid
+  name      String            @db.VarChar(80)
+  // Lower-cased name: category names are unique ignoring case.
+  nameKey   String            @unique @db.VarChar(80)
+  parentId  String?           @db.Uuid
+  parent    ExpenseCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  ExpenseCategory[] @relation("CategoryTree")
+  expenses  Expense[]
+  createdAt DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime          @updatedAt @db.Timestamptz(6)
+
+  @@index([parentId], map: "idx_expense_category_parent")
+  @@map("finance_expense_categories")
+}
+
+model Expense {
+  id              String           @id @default(uuid()) @db.Uuid
+  date            DateTime         @db.Date
+  categoryId      String           @db.Uuid
+  category        ExpenseCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amountPaise     Int
+  storeId         String?          @db.Uuid
+  vendorId        String?          @db.Uuid
+  description     String?          @db.VarChar(500)
+  paymentMode     SpendMode?
+  status          ExpenseStatus    @default(recorded)
+  createdByUserId String           @db.VarChar(64)
+  idempotencyKey  String?          @db.VarChar(128)
+  deletedAt       DateTime?        @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+  events          ExpenseEvent[]
+  receipts        ExpenseReceipt[]
+
+  @@unique([createdByUserId, idempotencyKey], map: "uq_expense_creator_key")
+  @@index([date], map: "idx_expense_date")
+  @@index([storeId, date], map: "idx_expense_store_date")
+  @@index([categoryId, date], map: "idx_expense_category_date")
+  @@index([status, date], map: "idx_expense_status_date")
+  @@map("finance_expenses")
+}
+
+// Append-only history of an expense: who did what, and when.
+model ExpenseEvent {
+  id          String         @id @default(uuid()) @db.Uuid
+  expenseId   String         @db.Uuid
+  expense     Expense        @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  action      String         @db.VarChar(30)
+  fromStatus  ExpenseStatus?
+  toStatus    ExpenseStatus
+  actorUserId String         @db.VarChar(64)
+  actorName   String?        @db.VarChar(120)
+  note        String?        @db.VarChar(500)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(6)
+
+  @@index([expenseId, createdAt], map: "idx_expense_event_expense")
+  @@map("finance_expense_events")
+}
+
+// A receipt is a reference to a file plus its fingerprint; the bytes sit in this row (capped
+// small in the service) until the platform has an object store to point at instead.
+model ExpenseReceipt {
+  id               String   @id @default(uuid()) @db.Uuid
+  expenseId        String   @db.Uuid
+  expense          Expense  @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  fileName         String   @db.VarChar(200)
+  contentType      String   @db.VarChar(100)
+  sizeBytes        Int
+  sha256           String   @db.VarChar(64)
+  content          Bytes
+  uploadedByUserId String   @db.VarChar(64)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([expenseId, sha256], map: "uq_expense_receipt_hash")
+  @@map("finance_expense_receipts")
+}
+
+enum OperatingCostType {
+  rent
+  electricity
+  water
+  internet
+  salary
+  insurance
+  maintenance
+  other
+}
+
+enum CostFrequency {
+  monthly
+  quarterly
+  yearly
+}
+
+// A recurring commitment. Monthly figures are computed from these rows when asked, never
+// copied into expense rows, so there is nothing to generate twice.
+model OperatingCost {
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String            @db.VarChar(120)
+  type        OperatingCostType
+  amountPaise Int
+  frequency   CostFrequency
+  storeId     String?           @db.Uuid
+  dueDay      Int?              @db.SmallInt
+  startDate   DateTime          @db.Date
+  endDate     DateTime?         @db.Date
+  vendorId    String?           @db.Uuid
+  deletedAt   DateTime?         @db.Timestamptz(6)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(6)
+
+  @@index([storeId, createdAt], map: "idx_operating_cost_store")
+  @@index([type, createdAt], map: "idx_operating_cost_type")
+  @@map("finance_operating_costs")
+}
+
+// ------------------------------------------------------------------ GST
+
+enum GstStatus {
+  draft
+  ready
+  filed
+}
+
+// One row per calendar month (the period is unique). Immutable once filed.
+model GstReport {
+  id                String    @id @default(uuid()) @db.Uuid
+  month             String    @unique @db.VarChar(7)
+  status            GstStatus @default(draft)
+  rateBps           Int
+  grossPaise        BigInt
+  refundsPaise      BigInt
+  taxablePaise      BigInt
+  taxPaise          BigInt
+  cgstPaise         BigInt
+  sgstPaise         BigInt
+  orderCount        Int
+  storeIds          String[]  @db.Uuid
+  lines             Json
+  generatedAt       DateTime  @db.Timestamptz(6)
+  generatedByUserId String    @db.VarChar(64)
+  filedAt           DateTime? @db.Timestamptz(6)
+  filedByUserId     String?   @db.VarChar(64)
+  acknowledgement   String?   @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@map("finance_gst_reports")
+}
+
+// ------------------------------------------------------------------ ledger
+
+// Append-only double entry. Every posting writes at least two lines sharing a journalId, and
+// (sourceType, sourceId, lineNo) is unique so posting the same event twice is impossible.
+model LedgerEntry {
+  id          String   @id @default(uuid()) @db.Uuid
+  journalId   String   @db.Uuid
+  lineNo      Int      @db.SmallInt
+  date        DateTime @db.Date
+  account     String   @db.VarChar(100)
+  debitPaise  Int
+  creditPaise Int
+  reference   String   @db.VarChar(120)
+  storeId     String?  @db.Uuid
+  sourceType  String   @db.VarChar(30)
+  sourceId    String   @db.VarChar(64)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([sourceType, sourceId, lineNo], map: "uq_ledger_source_line")
+  @@index([date], map: "idx_ledger_date")
+  @@index([account, date], map: "idx_ledger_account_date")
+  @@index([storeId, date], map: "idx_ledger_store_date")
+  @@map("finance_ledger_entries")
+}
+
+// ------------------------------------------------------------------ receivables
+
+model Receivable {
+  id             String               @id @default(uuid()) @db.Uuid
+  invoiceId      String               @unique @db.Uuid
+  customerId     String               @db.Uuid
+  storeId        String               @db.Uuid
+  orderRef       String?              @db.VarChar(64)
+  amountPaise    Int
+  // What is still owed. Moved only by an atomic guarded update, never read-then-written.
+  balancePaise   Int
+  dueOn          DateTime             @db.Date
+  // Where a reminder goes. Snapshot supplied by commerce; never returned by any endpoint.
+  contactPhone   String?              @db.VarChar(20)
+  contactEmail   String?              @db.VarChar(254)
+  lastRemindedAt DateTime?            @db.Timestamptz(6)
+  createdAt      DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime             @updatedAt @db.Timestamptz(6)
+  payments       ReceivablePayment[]
+  reminders      ReceivableReminder[]
+
+  @@index([customerId], map: "idx_receivable_customer")
+  @@index([storeId, dueOn], map: "idx_receivable_store_due")
+  @@index([dueOn], map: "idx_receivable_due")
+  @@map("finance_receivables")
+}
+
+model ReceivablePayment {
+  id               String     @id @default(uuid()) @db.Uuid
+  receivableId     String     @db.Uuid
+  receivable       Receivable @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  storeId          String     @db.Uuid
+  amountPaise      Int
+  mode             SpendMode
+  reference        String?    @db.VarChar(120)
+  idempotencyKey   String?    @db.VarChar(128)
+  recordedByUserId String     @db.VarChar(64)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@unique([receivableId, idempotencyKey], map: "uq_receivable_payment_key")
+  @@index([receivableId], map: "idx_receivable_payment_receivable")
+  @@map("finance_receivable_payments")
+}
+
+model ReceivableReminder {
+  id           String     @id @default(uuid()) @db.Uuid
+  receivableId String     @db.Uuid
+  receivable   Receivable @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  channel      String     @db.VarChar(20)
+  delivered    Boolean
+  error        String?    @db.VarChar(200)
+  sentByUserId String     @db.VarChar(64)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@index([receivableId, createdAt], map: "idx_receivable_reminder_receivable")
+  @@map("finance_receivable_reminders")
+}
+
+// ------------------------------------------------------------------ cash
+
+enum DailyCloseStatus {
+  closed
+  approved
+}
+
+enum CashEntryKind {
+  counted
+  deposit
+}
+
+enum VarianceStatus {
+  open
+  resolved
+}
+
+// A store's day close as reported by commerce: what the till should hold. One per store and day.
+model DailyClose {
+  id               String           @id @default(uuid()) @db.Uuid
+  storeId          String           @db.Uuid
+  storeName        String?          @db.VarChar(120)
+  date             DateTime         @db.Date
+  expectedPaise    Int
+  closedByUserId   String?          @db.VarChar(64)
+  closedByName     String           @db.VarChar(120)
+  status           DailyCloseStatus @default(closed)
+  approvedByUserId String?          @db.VarChar(64)
+  approvedAt       DateTime?        @db.Timestamptz(6)
+  approvalNote     String?          @db.VarChar(500)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(6)
+
+  @@unique([storeId, date], map: "uq_daily_close_store_date")
+  @@index([date], map: "idx_daily_close_date")
+  @@map("finance_daily_closes")
+}
+
+// Append-only cash book: the count at close and each deposit to the bank.
+model CashBookEntry {
+  id             String        @id @default(uuid()) @db.Uuid
+  storeId        String        @db.Uuid
+  date           DateTime      @db.Date
+  kind           CashEntryKind
+  amountPaise    Int
+  reference      String?       @db.VarChar(120)
+  idempotencyKey String        @db.VarChar(128)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(6)
+
+  @@unique([storeId, kind, idempotencyKey], map: "uq_cash_entry_key")
+  @@index([storeId, date], map: "idx_cash_entry_store_date")
+  @@index([date], map: "idx_cash_entry_date")
+  @@map("finance_cash_book_entries")
+}
+
+// Opened when a close counts a different amount than expected (signed: counted minus expected).
+model CashVariance {
+  id               String         @id @default(uuid()) @db.Uuid
+  storeId          String         @db.Uuid
+  date             DateTime       @db.Date
+  amountPaise      Int
+  status           VarianceStatus @default(open)
+  resolution       String?        @db.VarChar(300)
+  note             String?        @db.VarChar(500)
+  resolvedByUserId String?        @db.VarChar(64)
+  resolvedAt       DateTime?      @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(6)
+
+  @@unique([storeId, date], map: "uq_cash_variance_store_date")
+  @@index([date], map: "idx_cash_variance_date")
+  @@index([status, date], map: "idx_cash_variance_status_date")
+  @@map("finance_cash_variances")
 }

@@ -1,0 +1,15 @@
+// Generator and datasource only. Models live in one file per module in this folder
+// (core.prisma, then one file per feature), so people working on different modules
+// never edit the same file. Prisma reads every .prisma file here as one schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // No url here on purpose: Prisma 7 moved connection strings out of the
+  // schema. The CLI reads its URL from prisma.config.ts, and the running
+  // server passes its own through a driver adapter — see
+  // src/DB/Prisma.Connection.Db.ts.
+}

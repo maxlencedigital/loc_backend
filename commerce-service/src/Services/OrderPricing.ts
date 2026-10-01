@@ -61,9 +61,12 @@ export const parseLines = (rawItems: unknown): ILine[] => {
 
 // The lists that may price this order, most specific first: a store-specific list beats a
 // customer-type list, which beats the general one. A list narrowed to another store or
-// customer type does not apply at all.
+// customer type does not apply at all. Override lists carry their own rank (global, area and
+// store prices; see PricingOverlay.Query) on the same scale: 0 general, 10 customer type,
+// 20 store, 30 both.
 export const rankLists = (lists: IPricingList[], storeId: string, customerType: CustomerType): IPricingList[] => {
-  const specificity = (list: IPricingList): number => (list.storeId ? 2 : 0) + (list.customerType ? 1 : 0);
+  const specificity = (list: IPricingList): number =>
+    list.rank ?? (list.storeId ? 20 : 0) + (list.customerType ? 10 : 0);
   return lists
     .filter((list) => (!list.storeId || list.storeId === storeId) && (!list.customerType || list.customerType === customerType))
     .sort((a, b) => specificity(b) - specificity(a) || a.name.localeCompare(b.name));
@@ -74,10 +77,25 @@ const rowKey = (serviceId: string, garment: string, category: string) =>
 
 type PricingRow = IPricingList["rows"][number];
 
+/** The exact service + garment + category row from the most specific ranked list that has one. */
+export const exactMatch = (
+  lists: IPricingList[],
+  serviceId: string,
+  garment: string,
+  category: string
+): { list: IPricingList; row: PricingRow } | undefined => {
+  const key = rowKey(serviceId, garment, category);
+  for (const list of lists) {
+    const row = list.rows.find((r) => rowKey(r.serviceId, r.garment, r.category) === key);
+    if (row) return { list, row };
+  }
+  return undefined;
+};
+
 // An exact service + garment + category row wins, from the most specific list that has one.
 // A coarse booking ("Men's garments") has no such row, so it gets the service's base row: in
 // the most specific list that prices the service at all, the cheapest row in the same
-// category, else the cheapest row of the service.
+// category, else the cheapest row of the service. Override lists never price a coarse booking.
 const findRow = (lists: IPricingList[], indexed: Map<string, PricingRow>[], line: ILine): PricingRow | undefined => {
   const key = rowKey(line.serviceId, line.garment, line.category);
   const exact = indexed.map((rows) => rows.get(key)).find((found) => found !== undefined);
@@ -86,6 +104,7 @@ const findRow = (lists: IPricingList[], indexed: Map<string, PricingRow>[], line
   const cheapest = (rows: PricingRow[]) =>
     [...rows].sort((a, b) => a.ratePaise - b.ratePaise || a.garment.localeCompare(b.garment))[0];
   for (const list of lists) {
+    if (list.overlay) continue;
     const ofService = list.rows.filter((row) => row.serviceId === line.serviceId);
     if (ofService.length === 0) continue;
     const sameCategory = ofService.filter((row) => row.category === line.category);

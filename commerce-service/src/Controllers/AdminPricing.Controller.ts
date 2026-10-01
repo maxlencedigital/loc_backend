@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { FabricRiskAdminService } from "../Services/FabricRiskAdmin.Service.js";
+import { PricingService } from "../Services/Pricing.Service.js";
 
 /**
  * @openapi
@@ -44,12 +46,13 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAreaPricing = async (_req: Request, res: Response) => {
+const getAreaPricing = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await PricingService.getAreaPricing(scope, user, req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -95,13 +98,13 @@ const getAreaPricing = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setAreaPricing = async (req: Request, res: Response) => {
+const setAreaPricing = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["overrides"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await PricingService.setAreaPricing(scope, user, req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -150,13 +153,11 @@ const setAreaPricing = async (req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createFabricRiskRule = async (req: Request, res: Response) => {
+const createFabricRiskRule = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["fabric", "risk"]);
-    return handleNotImplementedResponse(res);
+    const result = await FabricRiskAdminService.create(req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -211,12 +212,11 @@ const createFabricRiskRule = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateFabricRiskRule = async (_req: Request, res: Response) => {
+const updateFabricRiskRule = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await FabricRiskAdminService.update(req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -243,12 +243,11 @@ const updateFabricRiskRule = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteFabricRiskRule = async (_req: Request, res: Response) => {
+const deleteFabricRiskRule = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await FabricRiskAdminService.remove(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -293,12 +292,12 @@ const deleteFabricRiskRule = async (_req: Request, res: Response) => {
  *                         source: { type: string, enum: [global, area, store] }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getEffectivePrice = async (_req: Request, res: Response) => {
+const getEffectivePrice = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await PricingService.getEffectivePrice(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -338,12 +337,11 @@ const getEffectivePrice = async (_req: Request, res: Response) => {
  *                         effectiveFrom: { type: string, format: date }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getGlobalPricing = async (_req: Request, res: Response) => {
+const getGlobalPricing = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PricingService.getGlobalPricing();
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -383,13 +381,12 @@ const getGlobalPricing = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setGlobalPricing = async (req: Request, res: Response) => {
+const setGlobalPricing = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["items"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await PricingService.setGlobalPricing(user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -441,12 +438,11 @@ const setGlobalPricing = async (req: Request, res: Response) => {
  *                               to: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPricingHistory = async (_req: Request, res: Response) => {
+const getPricingHistory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PricingService.getPricingHistory(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -493,12 +489,12 @@ const getPricingHistory = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getStorePricing = async (_req: Request, res: Response) => {
+const getStorePricing = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await PricingService.getStorePricing(scope, req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -544,13 +540,13 @@ const getStorePricing = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setStorePricing = async (req: Request, res: Response) => {
+const setStorePricing = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["overrides"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await PricingService.setStorePricing(scope, user, req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -581,12 +577,13 @@ const setStorePricing = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const removeStorePriceOverride = async (_req: Request, res: Response) => {
+const removeStorePriceOverride = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await PricingService.removeStorePriceOverride(scope, user, req.params.id, req.params.overrideId);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

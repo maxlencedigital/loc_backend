@@ -20,16 +20,11 @@ const digitsOnly = (value: string) => (value || "").replace(/[^\d]/g, "");
 // ("LOC") would be emptied by digitsOnly, so it is sent as configured.
 const formatSender = (value: string) => (/^[+\d\s()-]+$/.test(value) ? digitsOnly(value) : value);
 
-const send = async (
-  to: string,
-  templateId: string,
-  params: Record<string, string>
-): Promise<string | undefined> => {
+// Sends already-rendered text (templates and campaign messages both end up here).
+const sendText = async (to: string, message: string): Promise<string | undefined> => {
   try {
-    requireFields({ to, templateId }, ["to", "templateId"]);
     const number = digitsOnly(to);
     if (!number) throw new CustomException("to must be a valid phone number.", badRequest);
-    const message = renderSmsTemplate(templateId, params);
 
     if (!isConfigured()) {
       throw new CustomException("SMS provider is not configured.", serviceUnavailable);
@@ -77,4 +72,18 @@ const send = async (
   }
 };
 
-export const SmsClient = { send, isConfigured };
+const send = async (
+  to: string,
+  templateId: string,
+  params: Record<string, string>
+): Promise<string | undefined> => {
+  try {
+    requireFields({ to, templateId }, ["to", "templateId"]);
+    if (!digitsOnly(to)) throw new CustomException("to must be a valid phone number.", badRequest);
+    return await sendText(to, renderSmsTemplate(templateId, params));
+  } catch (error) {
+    throw toCustomException(error);
+  }
+};
+
+export const SmsClient = { send, sendText, isConfigured };

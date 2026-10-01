@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { CampaignService } from "../Services/Campaign.Service.js";
+import { NotificationService } from "../Services/Notification.Service.js";
+import { actorId } from "./Actor.js";
 
 /**
  * @openapi
@@ -65,12 +67,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listCampaigns = async (_req: Request, res: Response) => {
+const listCampaigns = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.list(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -139,13 +140,11 @@ const listCampaigns = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createCampaign = async (req: Request, res: Response) => {
+const createCampaign = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "channel", "audience"]);
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.create(actorId(req), req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -200,13 +199,11 @@ const createCampaign = async (req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const previewCampaignAudience = async (req: Request, res: Response) => {
+const previewCampaignAudience = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["audience"]);
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.previewAudience(req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -259,12 +256,11 @@ const previewCampaignAudience = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCampaign = async (_req: Request, res: Response) => {
+const getCampaign = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.get(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -339,12 +335,11 @@ const getCampaign = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateCampaign = async (_req: Request, res: Response) => {
+const updateCampaign = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.update(req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -371,12 +366,11 @@ const updateCampaign = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const cancelCampaign = async (_req: Request, res: Response) => {
+const cancelCampaign = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.cancel(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -414,13 +408,11 @@ const cancelCampaign = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const scheduleCampaign = async (req: Request, res: Response) => {
+const scheduleCampaign = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["scheduledAt"]);
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.schedule(req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -442,17 +434,36 @@ const scheduleCampaign = async (req: Request, res: Response) => {
  *         schema: { type: string }
  *     responses:
  *       200:
- *         description: "OK."
+ *         description: "Progress of this batch. Call again until done is true; each call sends one bounded batch."
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/SuccessResponse'
+ *                 - type: object
+ *                   properties:
+ *                     result:
+ *                       type: object
+ *                       properties:
+ *                         status: { type: string, enum: [sending, sent, cancelled] }
+ *                         processed: { type: integer }
+ *                         delivered: { type: integer }
+ *                         failed: { type: integer }
+ *                         skipped: { type: integer }
+ *                         claimed: { type: integer }
+ *                         maxRecipients: { type: integer }
+ *                         done: { type: boolean }
+ *       409:
+ *         description: "The campaign is finished or cancelled, or another batch is running."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const sendCampaign = async (_req: Request, res: Response) => {
+const sendCampaign = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.send(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -494,12 +505,11 @@ const sendCampaign = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCampaignStats = async (_req: Request, res: Response) => {
+const getCampaignStats = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CampaignService.stats(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -553,12 +563,11 @@ const getCampaignStats = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listNotificationTemplates = async (_req: Request, res: Response) => {
+const listNotificationTemplates = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.listTemplates(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -613,13 +622,11 @@ const listNotificationTemplates = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createNotificationTemplate = async (req: Request, res: Response) => {
+const createNotificationTemplate = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "channel", "body"]);
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.createTemplate(req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -665,12 +672,11 @@ const createNotificationTemplate = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getNotificationTemplate = async (_req: Request, res: Response) => {
+const getNotificationTemplate = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.getTemplate(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -731,12 +737,11 @@ const getNotificationTemplate = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateNotificationTemplate = async (_req: Request, res: Response) => {
+const updateNotificationTemplate = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.updateTemplate(req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -763,12 +768,11 @@ const updateNotificationTemplate = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteNotificationTemplate = async (_req: Request, res: Response) => {
+const deleteNotificationTemplate = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.deleteTemplate(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -834,12 +838,11 @@ const deleteNotificationTemplate = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listNotificationLog = async (_req: Request, res: Response) => {
+const listNotificationLog = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.listLog(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -866,12 +869,11 @@ const listNotificationLog = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getNotificationLogEntry = async (_req: Request, res: Response) => {
+const getNotificationLogEntry = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.getLogEntry(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -898,12 +900,11 @@ const getNotificationLogEntry = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const retryNotification = async (_req: Request, res: Response) => {
+const retryNotification = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.retry(req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

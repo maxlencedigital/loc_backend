@@ -1,9 +1,10 @@
-// Logistics service data model — pickups, deliveries, routes and riders.
+// Logistics service data model: rider onboarding, shifts, pickup and delivery jobs,
+// the rider earnings ledger, door-payment (cash) records and the outbox that keeps
+// commerce's order status in step with what riders do.
 //
-// No models yet: the routes exist as documented contracts returning 501 while
-// the service logic is built out module by module (see
-// src/Routes/Logistics.Routes.ts). Models land here as each module is
-// implemented, one migration at a time.
+// Money is integer paise. Coordinates are double precision (they are not money).
+// References to another service's data (orders, stores, gateway users) are plain
+// uuid columns with no foreign key: no service reads another's tables.
 //
 // These tables live in their own Postgres schema (DB_SCHEMA=logistics). That
 // is what keeps "no service reads another's tables" real rather than a
@@ -19,4 +20,508 @@ datasource db {
   // schema. The CLI reads its URL from prisma.config.ts, and the running
   // server passes its own through a driver adapter — see
   // src/DB/Prisma.Connection.Db.ts.
+}
+
+enum VehicleType {
+  bike
+  scooter
+  bicycle
+  ev
+  other
+}
+
+enum IdType {
+  aadhaar
+  pan
+  driving_licence
+  voter_id
+}
+
+enum DocumentType {
+  id_proof
+  licence
+  vehicle_rc
+  insurance
+  photo
+}
+
+enum ApplicationStatus {
+  submitted
+  documents_requested
+  under_review
+  approved
+  rejected
+}
+
+enum RiderStatus {
+  active
+  suspended
+  inactive
+}
+
+enum JobType {
+  pickup
+  delivery
+}
+
+enum JobStatus {
+  pending
+  assigned
+  en_route
+  arrived
+  picked_up
+  at_store
+  out_for_delivery
+  delivered
+  failed
+  cancelled
+}
+
+enum JobPriority {
+  normal
+  express
+}
+
+enum ItemCondition {
+  ok
+  stain
+  tear
+  loose_button
+  colour_fade
+  damaged
+  other
+}
+
+enum PhotoKind {
+  pickup
+  delivery
+}
+
+enum PaymentMethod {
+  cash
+  upi
+  card
+}
+
+enum FieldPaymentStatus {
+  collected
+  settled
+}
+
+enum LedgerKind {
+  job_base
+  job_express
+  shift_bonus
+  bonus
+  penalty
+  payout
+}
+
+enum OutboxKind {
+  order_status
+  order_payment
+}
+
+enum OutboxState {
+  pending
+  done
+  dead
+}
+
+// A person applying to ride. No gateway account exists yet; HR decides. ID and
+// licence numbers are stored masked (last four digits only): the documents carry the rest.
+model RiderApplication {
+  id                   String            @id @default(uuid()) @db.Uuid
+  name                 String
+  phone                String
+  email                String?
+  city                 String
+  vehicleType          VehicleType
+  vehicleNumber        String
+  drivingLicenceMasked String
+  idType               IdType
+  idNumberMasked       String
+  preferredStoreId     String?           @db.Uuid
+  status               ApplicationStatus @default(submitted)
+  // Set to the phone while the application is not rejected: a unique column is how
+  // "one live application per phone" is enforced (a partial index is invisible to Prisma).
+  openPhone            String?           @unique
+  uploadTokenHash      String
+  requestedDocuments   DocumentType[]
+  requestMessage       String?
+  identityVerified     Boolean?
+  vehicleVerified      Boolean?
+  insuranceValid       Boolean?
+  insuranceExpiry      DateTime?         @db.Date
+  verifyNotes          String?
+  verifiedByUserId     String?           @db.Uuid
+  verifiedAt           DateTime?         @db.Timestamptz(6)
+  decidedByUserId      String?           @db.Uuid
+  decidedAt            DateTime?         @db.Timestamptz(6)
+  decisionNotes        String?
+  rejectionReason      String?
+  submittedAt          DateTime          @default(now()) @db.Timestamptz(6)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(6)
+
+  documents ApplicationDocument[]
+  rider     Rider?
+
+  @@index([status, submittedAt], map: "idx_rider_application_status_submitted")
+  @@index([city, submittedAt], map: "idx_rider_application_city_submitted")
+  @@index([submittedAt], map: "idx_rider_application_submitted")
+  @@map("logistics_rider_applications")
+}
+
+// A reference to an uploaded file (the bytes live in object storage, not here).
+model ApplicationDocument {
+  id            String           @id @default(uuid()) @db.Uuid
+  applicationId String           @db.Uuid
+  type          DocumentType
+  fileUrl       String
+  createdAt     DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(6)
+  application   RiderApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, type], map: "uq_application_document_type")
+  @@map("logistics_application_documents")
+}
+
+// One profile per gateway user. userId stays empty until HR links the account.
+model Rider {
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String?     @unique @db.Uuid
+  applicationId     String?     @unique @db.Uuid
+  name              String
+  phone             String      @unique
+  email             String?
+  city              String
+  vehicleType       VehicleType
+  vehicleNumber     String
+  homeStoreId       String?     @db.Uuid
+  status            RiderStatus @default(inactive)
+  available         Boolean     @default(false)
+  identityVerified  Boolean     @default(false)
+  vehicleVerified   Boolean     @default(false)
+  insuranceValid    Boolean     @default(false)
+  insuranceExpiry   DateTime?   @db.Date
+  lastLatitude      Float?
+  lastLongitude     Float?
+  lastLocationAt    DateTime?   @db.Timestamptz(6)
+  approvedByUserId  String?     @db.Uuid
+  approvedAt        DateTime?   @db.Timestamptz(6)
+  suspendedReason   String?
+  suspendedByUserId String?     @db.Uuid
+  suspendedAt       DateTime?   @db.Timestamptz(6)
+  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @db.Timestamptz(6)
+
+  application RiderApplication? @relation(fields: [applicationId], references: [id])
+  shifts      Shift[]
+  jobs        Job[]
+  events      RiderEvent[]
+  assignments JobAssignment[]
+  ledger      LedgerEntry[]
+  payments    FieldPayment[]
+  ratings     RiderRating[]
+
+  @@index([status, available], map: "idx_rider_status_available")
+  @@index([homeStoreId, status], map: "idx_rider_home_store_status")
+  @@map("logistics_riders")
+}
+
+// Who did what to a rider and when: approval, linking an account, suspension.
+model RiderEvent {
+  id       String   @id @default(uuid()) @db.Uuid
+  riderId  String   @db.Uuid
+  kind     String
+  note     String?
+  byUserId String?  @db.Uuid
+  at       DateTime @default(now()) @db.Timestamptz(6)
+  rider    Rider    @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, at], map: "idx_rider_event_rider_at")
+  @@map("logistics_rider_events")
+}
+
+model Shift {
+  id             String    @id @default(uuid()) @db.Uuid
+  riderId        String    @db.Uuid
+  startedAt      DateTime  @default(now()) @db.Timestamptz(6)
+  endedAt        DateTime? @db.Timestamptz(6)
+  // Equals riderId while the shift is open and null once closed. Unique, so a rider
+  // can never hold two open shifts, whatever the service does.
+  openRiderId    String?   @unique @db.Uuid
+  startLatitude  Float?
+  startLongitude Float?
+  vehicleChecked Boolean   @default(false)
+  odometerKm     Float?
+  jobsCompleted  Int?
+  distanceMeters Int?
+  earningsPaise  Int?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+  rider          Rider     @relation(fields: [riderId], references: [id])
+
+  @@index([riderId, startedAt], map: "idx_shift_rider_started")
+  @@map("logistics_shifts")
+}
+
+// One pickup or delivery for one order. The rider is a column, so a job has at
+// most one rider by construction; every move is a conditional UPDATE on the status
+// (and rider) the caller read, which is what makes concurrent actors resolve cleanly.
+model Job {
+  id                   String      @id @default(uuid()) @db.Uuid
+  orderId              String      @db.Uuid
+  orderNumber          String
+  type                 JobType
+  status               JobStatus   @default(pending)
+  priority             JobPriority @default(normal)
+  storeId              String      @db.Uuid
+  riderId              String?     @db.Uuid
+  shiftId              String?     @db.Uuid
+  customerName         String
+  customerPhone        String
+  addressLine1         String
+  addressLine2         String?
+  landmark             String?
+  city                 String?
+  pincode              String?
+  latitude             Float?
+  longitude            Float?
+  coordinatesSource    String?
+  slotFrom             DateTime    @default(now()) @db.Timestamptz(6)
+  slotTo               DateTime?   @db.Timestamptz(6)
+  sequence             Int?
+  distanceMeters       Int?
+  isPremium            Boolean     @default(false)
+  isDelicate           Boolean     @default(false)
+  requiresInspection   Boolean     @default(false)
+  amountToCollectPaise Int         @default(0)
+  collectedPaise       Int         @default(0)
+  careNotes            String?
+  items                Json        @default("[]")
+  notes                String?
+  // What the customer reads out (or is shown) at the door; shared with commerce only.
+  handoverCode         String
+  codeAttempts         Int         @default(0)
+  assignedAt           DateTime?   @db.Timestamptz(6)
+  startedAt            DateTime?   @db.Timestamptz(6)
+  arrivedAt            DateTime?   @db.Timestamptz(6)
+  pickedUpAt           DateTime?   @db.Timestamptz(6)
+  completedAt          DateTime?   @db.Timestamptz(6)
+  failedAt             DateTime?   @db.Timestamptz(6)
+  cancelledAt          DateTime?   @db.Timestamptz(6)
+  failureReason        String?
+  failureNote          String?
+  cancelReason         String?
+  rescheduleCount      Int         @default(0)
+  durationMinutes      Int?
+  onTime               Boolean?
+  createdByUserId      String?     @db.Uuid
+  createdAt            DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime    @updatedAt @db.Timestamptz(6)
+
+  rider       Rider?          @relation(fields: [riderId], references: [id])
+  proof       JobProof?
+  events      JobEvent[]
+  assignments JobAssignment[]
+  scans       JobScan[]
+  inspections JobInspection[]
+  photos      JobPhoto[]
+  payments    FieldPayment[]
+  rating      RiderRating?
+
+  @@unique([orderId, type], map: "uq_job_order_type")
+  @@index([storeId, status, createdAt], map: "idx_job_store_status_created")
+  @@index([status, createdAt], map: "idx_job_status_created")
+  @@index([riderId, status], map: "idx_job_rider_status")
+  @@index([riderId, slotFrom], map: "idx_job_rider_slot")
+  @@index([storeId, slotFrom], map: "idx_job_store_slot")
+  @@index([riderId, completedAt], map: "idx_job_rider_completed")
+  @@index([shiftId], map: "idx_job_shift")
+  @@map("logistics_jobs")
+}
+
+// Proof of handover, kept off the job row because a signature is large.
+model JobProof {
+  id                String    @id @default(uuid()) @db.Uuid
+  jobId             String    @unique @db.Uuid
+  confirmation      String?
+  otpVerified       Boolean   @default(false)
+  signature         String?
+  receivedBy        String?
+  itemCount         Int?
+  overallNote       String?
+  notes             String?
+  handoffStoreId    String?   @db.Uuid
+  handoffItemCount  Int?
+  handoffReceiverId String?   @db.Uuid
+  handoffNotes      String?
+  handoffAt         DateTime? @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+  job               Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("logistics_job_proofs")
+}
+
+model JobEvent {
+  id       String    @id @default(uuid()) @db.Uuid
+  jobId    String    @db.Uuid
+  status   JobStatus
+  byUserId String?   @db.Uuid
+  byName   String?
+  note     String?
+  at       DateTime  @default(now()) @db.Timestamptz(6)
+  job      Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, at], map: "idx_job_event_job_at")
+  @@map("logistics_job_events")
+}
+
+// Assignment history. activeJobId holds the job id while the assignment is live and is
+// null once released; its unique index is the database's guarantee of one live rider per job.
+model JobAssignment {
+  id               String    @id @default(uuid()) @db.Uuid
+  jobId            String    @db.Uuid
+  riderId          String    @db.Uuid
+  assignedByUserId String?   @db.Uuid
+  assignedAt       DateTime  @default(now()) @db.Timestamptz(6)
+  releasedAt       DateTime? @db.Timestamptz(6)
+  releaseReason    String?
+  activeJobId      String?   @unique @db.Uuid
+  job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  rider            Rider     @relation(fields: [riderId], references: [id])
+
+  @@index([jobId], map: "idx_job_assignment_job")
+  @@index([riderId, assignedAt], map: "idx_job_assignment_rider_assigned")
+  @@map("logistics_job_assignments")
+}
+
+model JobScan {
+  id        String        @id @default(uuid()) @db.Uuid
+  jobId     String        @db.Uuid
+  tagId     String
+  condition ItemCondition @default(ok)
+  scannedAt DateTime      @default(now()) @db.Timestamptz(6)
+  job       Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, tagId], map: "uq_job_scan_tag")
+  @@map("logistics_job_scans")
+}
+
+model JobInspection {
+  id        String        @id @default(uuid()) @db.Uuid
+  jobId     String        @db.Uuid
+  itemId    String        @db.Uuid
+  condition ItemCondition
+  note      String?
+  createdAt DateTime      @default(now()) @db.Timestamptz(6)
+  job       Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, itemId], map: "uq_job_inspection_item")
+  @@map("logistics_job_inspections")
+}
+
+model JobPhoto {
+  id               String    @id @default(uuid()) @db.Uuid
+  jobId            String    @db.Uuid
+  kind             PhotoKind
+  itemId           String?   @db.Uuid
+  url              String
+  caption          String?
+  uploadedByUserId String?   @db.Uuid
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+  job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, kind], map: "idx_job_photo_job_kind")
+  @@map("logistics_job_photos")
+}
+
+// Append-only: nothing here is ever updated or deleted. A correction is a new row
+// (a penalty or a bonus). dedupeKey makes "earn once per job" and "bonus once per
+// shift" a database fact rather than a service promise.
+model LedgerEntry {
+  id              String     @id @default(uuid()) @db.Uuid
+  riderId         String     @db.Uuid
+  shiftId         String?    @db.Uuid
+  jobId           String?    @db.Uuid
+  kind            LedgerKind
+  amountPaise     Int
+  reason          String?
+  dedupeKey       String?    @unique
+  createdByUserId String?    @db.Uuid
+  createdAt       DateTime   @default(now()) @db.Timestamptz(6)
+  rider           Rider      @relation(fields: [riderId], references: [id])
+
+  @@index([riderId, createdAt], map: "idx_ledger_rider_created")
+  @@index([shiftId], map: "idx_ledger_shift")
+  @@map("logistics_earnings")
+}
+
+// Money a rider took at a door. Only cash has to be handed over; card and UPI go
+// straight to the business and are recorded as settled.
+model FieldPayment {
+  id                 String             @id @default(uuid()) @db.Uuid
+  jobId              String             @db.Uuid
+  orderId            String             @db.Uuid
+  riderId            String             @db.Uuid
+  storeId            String             @db.Uuid
+  amountPaise        Int
+  method             PaymentMethod
+  reference          String?
+  status             FieldPaymentStatus @default(collected)
+  collectedAt        DateTime           @default(now()) @db.Timestamptz(6)
+  settledAt          DateTime?          @db.Timestamptz(6)
+  settledAmountPaise Int?
+  settledByUserId    String?            @db.Uuid
+  settledStoreId     String?            @db.Uuid
+  settleNote         String?
+  // Optional client key: a retried request returns the first result instead of charging twice.
+  idempotencyKey     String?
+  job                Job                @relation(fields: [jobId], references: [id])
+  rider              Rider              @relation(fields: [riderId], references: [id])
+
+  @@unique([riderId, idempotencyKey], map: "uq_field_payment_idempotency")
+  @@index([riderId, status], map: "idx_field_payment_rider_status")
+  @@index([storeId, status, collectedAt], map: "idx_field_payment_store_status_collected")
+  @@index([jobId], map: "idx_field_payment_job")
+  @@index([collectedAt], map: "idx_field_payment_collected")
+  @@map("logistics_field_payments")
+}
+
+model RiderRating {
+  id        String   @id @default(uuid()) @db.Uuid
+  jobId     String   @unique @db.Uuid
+  riderId   String   @db.Uuid
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  job       Job      @relation(fields: [jobId], references: [id])
+  rider     Rider    @relation(fields: [riderId], references: [id])
+
+  @@index([riderId, createdAt], map: "idx_rating_rider_created")
+  @@map("logistics_rider_ratings")
+}
+
+// Calls to commerce that must happen because of something that already committed here.
+// Written in the same transaction as the change, delivered after it, retried until done.
+model Outbox {
+  id            String      @id @default(uuid()) @db.Uuid
+  kind          OutboxKind
+  orderId       String      @db.Uuid
+  jobId         String?     @db.Uuid
+  payload       Json
+  dedupeKey     String      @unique
+  state         OutboxState @default(pending)
+  attempts      Int         @default(0)
+  lastError     String?
+  nextAttemptAt DateTime    @default(now()) @db.Timestamptz(6)
+  doneAt        DateTime?   @db.Timestamptz(6)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@index([state, nextAttemptAt], map: "idx_outbox_state_next")
+  @@map("logistics_outbox")
 }

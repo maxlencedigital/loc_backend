@@ -9,6 +9,8 @@ export type StoreScope = string | null;
 export const NO_STORE_MESSAGE = "Your account is not assigned to a store.";
 
 const isCrossStoreRole = (role: string) => role === "super_admin" || role === "admin";
+// HR works across every store; the gateway never forwards a scope header for it.
+const isCompanyWideRole = (role: string) => role === "hr";
 const isStoreBoundRole = (role: string) => role === "manager" || role === "staff";
 
 // The one place "which store?" is decided. A store-bound role is pinned to their own
@@ -22,6 +24,7 @@ export const resolveStoreScope = (req: IdentifiedRequest): StoreScope => {
     if (!isUuid(user.scopeStoreId)) throw new CustomException("Invalid store.", badRequest);
     return user.scopeStoreId;
   }
+  if (isCompanyWideRole(user.role)) return null;
   if (isStoreBoundRole(user.role)) {
     if (!isUuid(user.storeId)) throw new CustomException(NO_STORE_MESSAGE, forbidden);
     return user.storeId;

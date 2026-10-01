@@ -1,0 +1,417 @@
+// HR people (package P06): training, performance appraisals, pay and incentives,
+// grievances and HR requests. Everything here belongs to a person, referenced by a plain
+// `employeeId` uuid column (HrEmployee is owned by the HR core file, which must not gain
+// back-relations from this one, so there is no database foreign key to it: the services
+// check every employee through EmployeeAccess and employees are never deleted, only
+// marked exited). Relations between tables of this file are real foreign keys.
+//
+// Money is integer paise, fractional quantities are integer thousandths, a training
+// score is integer hundredths. Calendar dates are `@db.Date` (IST), instants Timestamptz.
+
+enum HrTrainingCategory {
+  software
+  customer_handling
+  safety
+  compliance
+  other
+}
+
+enum HrTrainingStatus {
+  assigned
+  in_progress
+  completed
+}
+
+enum HrAppraisalStatus {
+  scheduled
+  in_progress
+  completed
+}
+
+enum HrAppraisalOutcome {
+  promoted
+  increment
+  no_change
+  improvement_plan
+  other
+}
+
+enum HrPayCycle {
+  monthly
+  weekly
+  per_job
+}
+
+enum HrIncentiveAppliesTo {
+  staff
+  rider
+  both
+}
+
+enum HrIncentiveMetricKind {
+  jobs_completed
+  orders_processed
+  rating
+  attendance
+  distance
+}
+
+enum HrIncentivePeriod {
+  daily
+  weekly
+  monthly
+}
+
+enum HrIncentiveEarningStatus {
+  pending
+  approved
+  paid
+}
+
+enum HrPayoutType {
+  salary
+  incentive
+  bonus
+  advance
+}
+
+enum HrGrievanceCategory {
+  harassment
+  pay
+  workload
+  safety
+  management
+  discrimination
+  other
+}
+
+enum HrGrievanceStatus {
+  open
+  assigned
+  in_progress
+  escalated
+  closed
+}
+
+enum HrGrievanceNoteKind {
+  comment
+  assignment
+  escalation
+  closure
+}
+
+enum HrRequestCategory {
+  leave_policy
+  payroll
+  documents
+  benefits
+  other
+}
+
+enum HrRequestStatus {
+  open
+  answered
+  closed
+}
+
+// ------------------------------------------------------------------ training
+
+// A course is retired (deletedAt), never removed: assignments keep pointing at it.
+model HrTrainingCourse {
+  id              String             @id @default(uuid()) @db.Uuid
+  title           String
+  category        HrTrainingCategory
+  description     String?
+  durationMinutes Int?
+  materialUrl     String?
+  // Refresher interval; null means a completion never expires.
+  validForDays    Int?
+  deletedAt       DateTime?          @db.Timestamptz(6)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(6)
+
+  requirements HrTrainingRequirement[]
+  assignments  HrTrainingAssignment[]
+
+  @@index([deletedAt, title], map: "idx_hr_course_list")
+  @@map("commerce_hr_training_courses")
+}
+
+// The courses a job role must complete. `roleKey` is the normalised role (normaliseKey).
+model HrTrainingRequirement {
+  id        String   @id @default(uuid()) @db.Uuid
+  roleKey   String
+  courseId  String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  course HrTrainingCourse @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@unique([roleKey, courseId], map: "uq_hr_training_requirement")
+  @@index([courseId], map: "idx_hr_training_requirement_course")
+  @@map("commerce_hr_training_requirements")
+}
+
+model HrTrainingAssignment {
+  id             String           @id @default(uuid()) @db.Uuid
+  employeeId     String           @db.Uuid
+  courseId       String           @db.Uuid
+  status         HrTrainingStatus @default(assigned)
+  // true while the assignment is open, NULL once completed: with the unique index below
+  // (NULLs never collide) the database allows one open assignment per person and course.
+  isOpen         Boolean?         @default(true)
+  dueDate        DateTime         @db.Date
+  // The course's refresher interval when assigned, so a later course edit never moves it.
+  validForDays   Int?
+  startedAt      DateTime?        @db.Timestamptz(6)
+  completedAt    DateTime?        @db.Timestamptz(6)
+  // Hundredths of a mark (0 to 10000).
+  scoreHundredths Int?
+  // Business date a completion stops counting (completion date plus validForDays).
+  expiresAt      DateTime?        @db.Date
+  // When it next needs attention: the due date while open, the expiry once completed,
+  // NULL when it never expires or a later completion replaced it. Overdue means before today.
+  nextDueOn      DateTime?        @db.Date
+  // Set when a later completion of the same course replaces this one.
+  supersededAt   DateTime?        @db.Timestamptz(6)
+  assignedByName String
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+
+  course HrTrainingCourse @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, courseId, isOpen], map: "uq_hr_training_open")
+  @@index([employeeId, createdAt(sort: Desc)], map: "idx_hr_training_employee")
+  @@index([courseId, createdAt(sort: Desc)], map: "idx_hr_training_course")
+  @@index([status, createdAt(sort: Desc)], map: "idx_hr_training_status")
+  @@index([createdAt(sort: Desc)], map: "idx_hr_training_created")
+  @@index([nextDueOn], map: "idx_hr_training_next_due")
+  @@map("commerce_hr_training_assignments")
+}
+
+// -------------------------------------------------------------- performance
+
+model HrAppraisal {
+  id              String              @id @default(uuid()) @db.Uuid
+  employeeId      String              @db.Uuid
+  cycle           String
+  scheduledFor    DateTime            @db.Date
+  // An employee id (normally the person's manager).
+  reviewerId      String?             @db.Uuid
+  status          HrAppraisalStatus   @default(scheduled)
+  // 1 to 5, written once by "conduct" and never changed.
+  rating          Int?
+  strengths       String?
+  improvements    String?
+  goals           String[]
+  conductedAt     DateTime?           @db.Timestamptz(6)
+  conductedByName String?
+  outcome         HrAppraisalOutcome?
+  outcomeNote     String?
+  completedAt     DateTime?           @db.Timestamptz(6)
+  completedByName String?
+  createdByName   String
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+
+  @@unique([employeeId, cycle], map: "uq_hr_appraisal_cycle")
+  @@index([employeeId, scheduledFor(sort: Desc)], map: "idx_hr_appraisal_employee")
+  @@index([status, scheduledFor(sort: Desc)], map: "idx_hr_appraisal_status")
+  @@index([cycle, status], map: "idx_hr_appraisal_cycle_status")
+  @@index([scheduledFor(sort: Desc)], map: "idx_hr_appraisal_scheduled")
+  @@map("commerce_hr_appraisals")
+}
+
+// --------------------------------------------------------------------- pay
+
+// Append-only versions of someone's pay terms; the one in force on a day is the latest
+// whose effectiveFrom is not after it.
+model HrCompensation {
+  id               String     @id @default(uuid()) @db.Uuid
+  employeeId       String     @db.Uuid
+  baseSalaryPaise  Int
+  payCycle         HrPayCycle @default(monthly)
+  // { "<allowance name>": <paise per pay cycle> }
+  allowances       Json
+  bonusEligible    Boolean    @default(false)
+  effectiveFrom    DateTime   @db.Date
+  createdByName    String
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@unique([employeeId, effectiveFrom], map: "uq_hr_compensation_effective")
+  @@map("commerce_hr_compensation")
+}
+
+model HrIncentiveScheme {
+  id        String               @id @default(uuid()) @db.Uuid
+  name      String
+  appliesTo HrIncentiveAppliesTo
+  metric    HrIncentiveMetricKind
+  period    HrIncentivePeriod    @default(monthly)
+  // [{ "thresholdMilli": n, "rewardPaise": n }], thresholds strictly increasing.
+  rules     Json
+  isActive  Boolean              @default(true)
+  createdAt DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime             @updatedAt @db.Timestamptz(6)
+
+  assignments HrIncentiveAssignment[]
+  earnings    HrIncentiveEarning[]
+
+  @@index([name], map: "idx_hr_scheme_name")
+  @@map("commerce_hr_incentive_schemes")
+}
+
+model HrIncentiveAssignment {
+  id             String   @id @default(uuid()) @db.Uuid
+  schemeId       String   @db.Uuid
+  employeeId     String   @db.Uuid
+  assignedByName String
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  scheme HrIncentiveScheme @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+
+  @@unique([schemeId, employeeId], map: "uq_hr_scheme_assignment")
+  @@index([employeeId], map: "idx_hr_scheme_assignment_employee")
+  @@map("commerce_hr_incentive_assignments")
+}
+
+// What other services (and the attendance data) report about a person for a period:
+// the input of an incentive. Quantities are thousandths (4.5 stars is 4500).
+model HrIncentiveMetricValue {
+  id         String            @id @default(uuid()) @db.Uuid
+  employeeId String            @db.Uuid
+  metric     HrIncentiveMetricKind
+  // 2026-09-15 (daily), 2026-W38 (weekly) or 2026-09 (monthly)
+  period     String
+  valueMilli Int
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(6)
+
+  @@unique([employeeId, metric, period], map: "uq_hr_incentive_metric")
+  @@map("commerce_hr_incentive_metrics")
+}
+
+model HrIncentiveEarning {
+  id               String                   @id @default(uuid()) @db.Uuid
+  employeeId       String                   @db.Uuid
+  schemeId         String                   @db.Uuid
+  schemeName       String
+  period           String
+  periodStart      DateTime                 @db.Date
+  periodEnd        DateTime                 @db.Date
+  metricValueMilli Int
+  rewardPaise      Int
+  status           HrIncentiveEarningStatus @default(pending)
+  approvedAt       DateTime?                @db.Timestamptz(6)
+  approvedByName   String?
+  paidAt           DateTime?                @db.Timestamptz(6)
+  createdAt        DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime                 @updatedAt @db.Timestamptz(6)
+
+  scheme HrIncentiveScheme @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, schemeId, period], map: "uq_hr_incentive_earning")
+  @@index([status, createdAt(sort: Desc)], map: "idx_hr_earning_status")
+  @@index([employeeId, periodStart], map: "idx_hr_earning_employee")
+  @@index([periodStart], map: "idx_hr_earning_period")
+  @@index([schemeId], map: "idx_hr_earning_scheme")
+  @@map("commerce_hr_incentive_earnings")
+}
+
+// A record that money was paid. Append-only: a mistake is corrected by a new row.
+model HrPayout {
+  id               String       @id @default(uuid()) @db.Uuid
+  employeeId       String       @db.Uuid
+  amountPaise      Int
+  type             HrPayoutType
+  // The month it is for, 2026-09
+  period           String
+  paidOn           DateTime     @db.Date
+  reference        String?
+  // Replay key from the Idempotency-Key header, unique per recording user.
+  idempotencyKey   String?
+  recordedByUserId String
+  recordedByName   String
+  createdAt        DateTime     @default(now()) @db.Timestamptz(6)
+
+  @@unique([recordedByUserId, idempotencyKey], map: "uq_hr_payout_idempotency")
+  @@index([employeeId, paidOn(sort: Desc)], map: "idx_hr_payout_employee")
+  @@index([paidOn(sort: Desc)], map: "idx_hr_payout_paid_on")
+  @@index([employeeId, type, period], map: "idx_hr_payout_sum")
+  @@map("commerce_hr_payouts")
+}
+
+// -------------------------------------------------------------- grievances
+
+model HrGrievance {
+  id                  String              @id @default(uuid()) @db.Uuid
+  // The person who raised it (kept even when anonymous, so they can follow it).
+  employeeId          String              @db.Uuid
+  againstEmployeeId   String?             @db.Uuid
+  category            HrGrievanceCategory
+  description         String
+  anonymous           Boolean             @default(false)
+  confidential        Boolean             @default(true)
+  status              HrGrievanceStatus   @default(open)
+  // An employee id of an HR person.
+  assigneeId          String?             @db.Uuid
+  assignedAt          DateTime?           @db.Timestamptz(6)
+  raisedAt            DateTime            @default(now()) @db.Timestamptz(6)
+  firstResponseDueAt  DateTime            @db.Timestamptz(6)
+  resolutionDueAt     DateTime            @db.Timestamptz(6)
+  firstResponseAt     DateTime?           @db.Timestamptz(6)
+  escalatedAt         DateTime?           @db.Timestamptz(6)
+  escalationReason    String?
+  closedAt            DateTime?           @db.Timestamptz(6)
+  outcome             String?
+  closedByName        String?
+  createdAt           DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime            @updatedAt @db.Timestamptz(6)
+
+  notes HrGrievanceNote[]
+
+  @@index([status, raisedAt(sort: Desc)], map: "idx_hr_grievance_status")
+  @@index([category, raisedAt(sort: Desc)], map: "idx_hr_grievance_category")
+  @@index([assigneeId, raisedAt(sort: Desc)], map: "idx_hr_grievance_assignee")
+  @@index([employeeId, raisedAt(sort: Desc)], map: "idx_hr_grievance_employee")
+  @@index([againstEmployeeId], map: "idx_hr_grievance_against")
+  @@index([raisedAt(sort: Desc)], map: "idx_hr_grievance_raised")
+  @@map("commerce_hr_grievances")
+}
+
+// Append-only case history: comments and the system's own record of assign, escalate, close.
+model HrGrievanceNote {
+  id          String              @id @default(uuid()) @db.Uuid
+  grievanceId String              @db.Uuid
+  kind        HrGrievanceNoteKind @default(comment)
+  message     String
+  // Internal notes are for HR only; the person who raised the case never sees them.
+  internal    Boolean             @default(false)
+  authorName  String
+  authorUserId String?
+  createdAt   DateTime            @default(now()) @db.Timestamptz(6)
+
+  grievance HrGrievance @relation(fields: [grievanceId], references: [id], onDelete: Restrict)
+
+  @@index([grievanceId, createdAt], map: "idx_hr_grievance_note")
+  @@map("commerce_hr_grievance_notes")
+}
+
+model HrRequest {
+  id              String            @id @default(uuid()) @db.Uuid
+  employeeId      String            @db.Uuid
+  category        HrRequestCategory
+  message         String
+  status          HrRequestStatus   @default(open)
+  response        String?
+  respondedAt     DateTime?         @db.Timestamptz(6)
+  respondedByName String?
+  closedAt        DateTime?         @db.Timestamptz(6)
+  closeNote       String?
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(6)
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_hr_request_status")
+  @@index([category, createdAt(sort: Desc)], map: "idx_hr_request_category")
+  @@index([employeeId, createdAt(sort: Desc)], map: "idx_hr_request_employee")
+  @@index([createdAt(sort: Desc)], map: "idx_hr_request_created")
+  @@map("commerce_hr_requests")
+}

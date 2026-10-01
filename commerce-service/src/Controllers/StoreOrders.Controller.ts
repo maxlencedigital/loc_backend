@@ -1,6 +1,9 @@
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { StoreOrdersService } from "../Services/StoreOrders.Service.js";
 
 /**
  * @openapi
@@ -32,15 +35,15 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
+ *       409:
+ *         description: "The order is not in a state that allows this, or the request is already being processed."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const addOrderNote = async (req: Request, res: Response) => {
+const addOrderNote = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["note"]);
-    return handleNotImplementedResponse(res);
+    const result = await StoreOrdersService.addOrderNote(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Note added.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -77,15 +80,15 @@ const addOrderNote = async (req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
+ *       409:
+ *         description: "The order is not in a state that allows this, or the request is already being processed."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const routeOrderToStore = async (req: Request, res: Response) => {
+const routeOrderToStore = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["storeId"]);
-    return handleNotImplementedResponse(res);
+    const result = await StoreOrdersService.routeOrderToStore(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Order sent to the other store.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -124,19 +127,18 @@ const routeOrderToStore = async (req: Request, res: Response) => {
  *                             type: object
  *                             properties:
  *                               at: { type: string, format: date-time }
- *                               status: { type: string, enum: [placed, pickup_scheduled, picked_up, at_store, processing, quality_check, ready, out_for_delivery, delivered, cancelled] }
+ *                               status: { type: string, enum: [booked, picked_up, received, sorted, washing, drying, quality_check, packed, out_for_delivery, delivered, cancelled] }
  *                               by: { type: string }
  *                               note: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getOrderTimeline = async (_req: Request, res: Response) => {
+const getOrderTimeline = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await StoreOrdersService.getOrderTimeline(req.params.id as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -148,9 +150,13 @@ const getOrderTimeline = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: createWalkInOrder
  *     summary: "Take a counter order for a walk-in customer"
- *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed). Same care questions the customer app asks. Send either customerId or newCustomer."
+ *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed). Same care questions the customer app asks. Send either customerId or newCustomer. Prices come from the active price list on the server. Send an Idempotency-Key header to make a retry return the first order. Paying by cash, upi or card books the order as paid; pay_later leaves it unpaid."
  *     tags: ["Store - Orders"]
  *     x-roles: [admin, manager, staff]
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         schema: { type: string, maxLength: 80 }
  *     requestBody:
  *       required: true
  *       content:
@@ -172,9 +178,11 @@ const getOrderTimeline = async (_req: Request, res: Response) => {
  *                 type: array
  *                 items:
  *                   type: object
- *                   required: [garmentTypeId, serviceId]
+ *                   required: [serviceId, garment, category]
  *                   properties:
- *                     garmentTypeId: { type: string, format: uuid }
+ *                     garmentTypeId: { type: string, format: uuid, description: "optional until the garment-type catalogue exists" }
+ *                     garment: { type: string, description: "the garment's name, as on the price list" }
+ *                     category: { type: string, enum: [men, women, kids, household, premium] }
  *                     serviceId: { type: string, format: uuid }
  *                     quantity: { type: integer, description: "pieces, for per-piece services" }
  *                     weightKg: { type: number, description: "kilograms, for by-weight services" }
@@ -208,18 +216,18 @@ const getOrderTimeline = async (_req: Request, res: Response) => {
  *                         orderId: { type: string, format: uuid }
  *                         orderNumber: { type: string }
  *                         amountDue: { type: number, description: "Amount in INR" }
- *                         paymentStatus: { type: string, enum: [unpaid, paid, partially_paid, refunded] }
+ *                         paymentStatus: { type: string, enum: [unpaid, paid, part_paid] }
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       409:
+ *         description: "The order is not in a state that allows this, or the request is already being processed."
  */
-const createWalkInOrder = async (req: Request, res: Response) => {
+const createWalkInOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["storeId", "items"]);
-    return handleNotImplementedResponse(res);
+    const result = await StoreOrdersService.createWalkInOrder(resolveStoreScope(req), req.user as RequestUser, req.body, req.header("Idempotency-Key"));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Order booked.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { ProcessingService } from "../Services/Processing.Service.js";
 
 /**
  * @openapi
@@ -45,13 +46,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createBatch = async (req: Request, res: Response) => {
+const createBatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["storeId", "serviceId", "orderItemIds"]);
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.createBatch(resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Batch created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -115,12 +114,11 @@ const createBatch = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listBatches = async (_req: Request, res: Response) => {
+const listBatches = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.listBatches(resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -164,12 +162,11 @@ const listBatches = async (_req: Request, res: Response) => {
  *                               reason: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const suggestBatches = async (_req: Request, res: Response) => {
+const suggestBatches = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.suggestBatches(resolveStoreScope(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -196,12 +193,11 @@ const suggestBatches = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getBatch = async (_req: Request, res: Response) => {
+const getBatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.getBatch(req.params.id as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -241,13 +237,11 @@ const getBatch = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "That machine is not free."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const assignBatchMachine = async (req: Request, res: Response) => {
+const assignBatchMachine = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["machineId"]);
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.assignBatchMachine(req.params.id as string, resolveStoreScope(req), req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Machine assigned.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -285,12 +279,11 @@ const assignBatchMachine = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const completeBatch = async (_req: Request, res: Response) => {
+const completeBatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.completeBatch(req.params.id as string, resolveStoreScope(req), req.user as RequestUser, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Batch completed.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -328,13 +321,11 @@ const completeBatch = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const addItemsToBatch = async (req: Request, res: Response) => {
+const addItemsToBatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["orderItemIds"]);
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.addItemsToBatch(req.params.id as string, resolveStoreScope(req), req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Items added.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -365,12 +356,11 @@ const addItemsToBatch = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const removeItemFromBatch = async (_req: Request, res: Response) => {
+const removeItemFromBatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.removeItemFromBatch(req.params.id as string, req.params.itemId as string, resolveStoreScope(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Item removed.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -397,12 +387,11 @@ const removeItemFromBatch = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const startBatch = async (_req: Request, res: Response) => {
+const startBatch = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await ProcessingService.startBatch(req.params.id as string, resolveStoreScope(req), req.user as RequestUser);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Batch started.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -1,5 +1,5 @@
 import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
-import { Request } from "express";
+import { Request, RequestHandler } from "express";
 import { AuthenticatedRequest } from "./Auth.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,12 +49,30 @@ const forwardIdentity = (proxyReq: any, req: Request) => {
 
 // mountPath must be stripped explicitly: in http-proxy-middleware v2, relying
 // on Express to have done it forwards "/commerce/health" instead of "/health".
-const buildServiceProxy = (target: string, mountPath: string) =>
-  createProxyMiddleware({
+const INTERNAL_PREFIX = "/internal";
+
+const buildServiceProxy = (target: string, mountPath: string): RequestHandler => {
+  const proxy = createProxyMiddleware({
     target,
     changeOrigin: true,
     pathRewrite: { [`^${mountPath}`]: "" },
     onProxyReq: forwardIdentity,
   } as any);
+
+  // /internal/* is for service-to-service calls only. It is answered 404 here, whoever
+  // asks, so it can never be reached from outside even with a valid token.
+  return (req, res, next) => {
+    const isInternal = req.path === INTERNAL_PREFIX || req.path.startsWith(`${INTERNAL_PREFIX}/`);
+    if (isInternal) {
+      return res.status(404).json({
+        statusCode: 404,
+        result: null,
+        displayMessage: "That could not be found.",
+        status: false,
+      });
+    }
+    return proxy(req, res, next);
+  };
+};
 
 export { buildServiceProxy };

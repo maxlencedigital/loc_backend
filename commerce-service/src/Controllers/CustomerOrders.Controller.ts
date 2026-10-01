@@ -1,8 +1,8 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { CustomerOrdersService } from "../Services/CustomerOrders.Service.js";
 
 /**
  * @openapi
@@ -65,12 +65,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMyOrders = async (_req: Request, res: Response) => {
+const listMyOrders = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrdersService.listMyOrders(user, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Orders.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -139,12 +139,12 @@ const listMyOrders = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMyOrder = async (_req: Request, res: Response) => {
+const getMyOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrdersService.getMyOrder(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Order.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -156,7 +156,7 @@ const getMyOrder = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: cancelMyOrder
  *     summary: "Cancel an order that has not been picked up"
- *     description: "**Who can call this:** customer (super_admin always allowed)."
+ *     description: "**Who can call this:** customer (super_admin always allowed). Allowed only while the order is still booked (the rider has not collected it); the pickup seat is released. Cancelling twice is harmless. Any refund is not handled here."
  *     tags: ["Customer - Orders & Tracking"]
  *     x-roles: [customer]
  *     parameters:
@@ -183,12 +183,12 @@ const getMyOrder = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "The order can no longer be cancelled."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const cancelMyOrder = async (_req: Request, res: Response) => {
+const cancelMyOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrdersService.cancelMyOrder(user, req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Order cancelled.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -200,7 +200,7 @@ const cancelMyOrder = async (_req: Request, res: Response) => {
  *   get:
  *     operationId: getMyOrderInvoice
  *     summary: "The invoice for an order"
- *     description: "**Who can call this:** customer (super_admin always allowed)."
+ *     description: "**Who can call this:** customer (super_admin always allowed). There is no invoice store yet: the invoice is the order record, numbered INV- plus the order number, and downloadUrl is null. A cancelled order has none."
  *     tags: ["Customer - Orders & Tracking"]
  *     x-roles: [customer]
  *     parameters:
@@ -229,12 +229,12 @@ const cancelMyOrder = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMyOrderInvoice = async (_req: Request, res: Response) => {
+const getMyOrderInvoice = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrdersService.getMyOrderInvoice(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Invoice.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -246,7 +246,7 @@ const getMyOrderInvoice = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: reorderMyOrder
  *     summary: "Start a new order from a past one"
- *     description: "**Who can call this:** customer (super_admin always allowed)."
+ *     description: "**Who can call this:** customer (super_admin always allowed). Returns a draft basket and the address used last (the default address if it was deleted); nothing is priced or booked."
  *     tags: ["Customer - Orders & Tracking"]
  *     x-roles: [customer]
  *     parameters:
@@ -284,12 +284,12 @@ const getMyOrderInvoice = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reorderMyOrder = async (_req: Request, res: Response) => {
+const reorderMyOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrdersService.reorderMyOrder(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Basket from your past order.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -301,7 +301,7 @@ const reorderMyOrder = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: rescheduleMyPickup
  *     summary: "Move the pickup to another slot"
- *     description: "**Who can call this:** customer (super_admin always allowed)."
+ *     description: "**Who can call this:** customer (super_admin always allowed). Same store only, while the order is still booked and at least 60 minutes before its window opens."
  *     tags: ["Customer - Orders & Tracking"]
  *     x-roles: [customer]
  *     parameters:
@@ -327,13 +327,12 @@ const reorderMyOrder = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const rescheduleMyPickup = async (req: Request, res: Response) => {
+const rescheduleMyPickup = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["pickupSlotId"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrdersService.rescheduleMyPickup(user, req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Pickup rescheduled.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -345,7 +344,7 @@ const rescheduleMyPickup = async (req: Request, res: Response) => {
  *   get:
  *     operationId: trackMyOrder
  *     summary: "Where is my order right now?"
- *     description: "**Who can call this:** customer (super_admin always allowed)."
+ *     description: "**Who can call this:** customer (super_admin always allowed). rider is null until one is assigned; phone, ETA and position are null because logistics is not connected yet."
  *     tags: ["Customer - Orders & Tracking"]
  *     x-roles: [customer]
  *     parameters:
@@ -387,12 +386,12 @@ const rescheduleMyPickup = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const trackMyOrder = async (_req: Request, res: Response) => {
+const trackMyOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await CustomerOrdersService.trackMyOrder(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Order tracking.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

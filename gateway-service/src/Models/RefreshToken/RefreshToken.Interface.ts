@@ -4,7 +4,9 @@ export type RevokeReason =
   | "logout_all"
   | "reuse_detected"
   | "password_reset"
-  | "deactivated";
+  | "deactivated"
+  | "password_change"
+  | "store_changed";
 
 export interface IRefreshToken {
   id: string;

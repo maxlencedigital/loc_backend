@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { requestActor } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { RiderPickupService } from "../Services/RiderPickup.Service.js";
 
 /**
  * @openapi
@@ -41,13 +42,14 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Not found.
  *       409:
  *         description: "The store's count does not match."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const handOffToStore = async (req: Request, res: Response) => {
+const handOffToStore = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["storeId", "itemCount"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderPickupService.handOff(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -82,19 +84,22 @@ const handOffToStore = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const confirmPickup = async (req: Request, res: Response) => {
+const confirmPickup = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["itemCount", "confirmation"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderPickupService.confirm(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -135,19 +140,22 @@ const confirmPickup = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const recordPickupInspection = async (req: Request, res: Response) => {
+const recordPickupInspection = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["items"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderPickupService.inspection(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -159,7 +167,7 @@ const recordPickupInspection = async (req: Request, res: Response) => {
  *   post:
  *     operationId: uploadPickupPhotos
  *     summary: "Photograph an item at the door"
- *     description: "**Who can call this:** driver (super_admin always allowed). Multipart."
+ *     description: "**Who can call this:** driver (super_admin always allowed). Send JSON with an https link to the already-uploaded file; logistics has no file storage of its own."
  *     tags: ["Rider - Pickup"]
  *     x-roles: [driver]
  *     parameters:
@@ -170,29 +178,33 @@ const recordPickupInspection = async (req: Request, res: Response) => {
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [photo]
+ *             required: [photoUrl]
  *             properties:
- *               photo: { type: string, format: binary }
+ *               photoUrl: { type: string, format: uri, description: "https link to the uploaded photo" }
  *               itemId: { type: string, format: uuid }
  *               caption: { type: string }
  *     responses:
  *       201:
  *         description: "Created."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadPickupPhotos = async (_req: Request, res: Response) => {
+const uploadPickupPhotos = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: created, result: await RiderPickupService.photos(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -225,19 +237,22 @@ const uploadPickupPhotos = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const scanPickupItem = async (req: Request, res: Response) => {
+const scanPickupItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["tagId"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderPickupService.scan(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }

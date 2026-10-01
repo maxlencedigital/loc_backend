@@ -52,6 +52,7 @@ const PUBLIC_ROUTES = [
   "/auth/password/forgot",
   "/auth/password/reset",
   "/auth/invite/accept",
+  "/auth/2fa/verify",
 ];
 
 const routes = collect((router as any).stack).filter((r) => r.path !== "/health");

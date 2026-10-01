@@ -190,6 +190,24 @@ describe("buildServiceProxy", () => {
     await upstream.close();
   });
 
+  it("answers 404 for /internal paths and never reaches the upstream, even with a valid user", async () => {
+    const upstream = await startUpstream();
+    const gateway = await startGateway((app) => {
+      app.use("/growth", withVerifiedUser("admin"), buildServiceProxy(upstream.url, "/growth"));
+    });
+
+    const direct = await fetch(`${gateway.url}/growth/internal/notifications/dispatch`, { method: "POST" });
+    const bare = await fetch(`${gateway.url}/growth/internal`);
+    const lookalike = await fetch(`${gateway.url}/growth/internals-report`);
+
+    expect(direct.status).toBe(404);
+    expect(bare.status).toBe(404);
+    expect(lookalike.status).toBe(200);
+    expect(upstream.seen.map((s) => s.url)).toEqual(["/internals-report"]);
+    await gateway.close();
+    await upstream.close();
+  });
+
   it("forwards the verified name percent-encoded and drops a forged x-user-name", async () => {
     const upstream = await startUpstream();
     const gateway = await startGateway((app) => {

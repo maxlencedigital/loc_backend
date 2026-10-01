@@ -1,0 +1,216 @@
+// P04 store admin: cash and day close, stock flags and ledger, resource readings, areas,
+// and the global > area > store price hierarchy with its change history.
+//
+// Stores, orders, services and users live in other files, so they are referenced with plain
+// uuid columns (indexed, no foreign key) and the services check they exist. Open sets are TEXT
+// with a CHECK in the migration, not enums, so no package can collide with a type name.
+// Money is integer paise, quantities integer thousandths. A `@db.Date` column is a calendar
+// day in the business time zone (IST); instants are Timestamptz.
+//
+// Stock quantities themselves belong to the purchasing module (commerce_material_stock);
+// this file only adds the ledger of manual movements and the floor's low-stock flags.
+
+// One row per store per business day, created by the first count, deposit or close. The row is
+// also the lock that serialises counts, deposits and the close for that day.
+model StoreDay {
+  id                  String    @id @default(uuid()) @db.Uuid
+  storeId             String    @db.Uuid
+  date                DateTime  @db.Date
+  // open, counted, closed.
+  state               String    @default("open")
+  closedAt            DateTime? @db.Timestamptz(6)
+  closedByUserId      String?
+  closedByName        String?
+  closeNote           String?
+  // Snapshots taken at close, so a closed day never changes when orders are edited later.
+  closedExpectedPaise Int?
+  closedCountedPaise  Int?
+  closedVariancePaise Int?
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@unique([storeId, date], map: "uq_store_day")
+  @@map("commerce_store_days")
+}
+
+// Append-only: a recount is a new row, and the latest row of a day is that day's count.
+model CashCount {
+  id              String   @id @default(uuid()) @db.Uuid
+  storeId         String   @db.Uuid
+  date            DateTime @db.Date
+  countedPaise    Int
+  // Cash takings the system expected when the count was made.
+  expectedPaise   Int
+  variancePaise   Int
+  // { "500": 12, "100": 40 } as given; its total equals countedPaise.
+  denominations   Json?
+  note            String?
+  countedByUserId String?
+  countedByName   String
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([storeId, date(sort: Desc), createdAt(sort: Desc)], map: "idx_cash_count_store_date")
+  @@map("commerce_cash_counts")
+}
+
+// Append-only. `date` is the business day whose cash this is; depositedAt is when it was banked.
+model CashDeposit {
+  id          String   @id @default(uuid()) @db.Uuid
+  storeId     String   @db.Uuid
+  date        DateTime @db.Date
+  amountPaise Int
+  bankReference String
+  depositedAt DateTime @db.Timestamptz(6)
+  byUserId    String?
+  byName      String
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([storeId, bankReference], map: "uq_cash_deposit_reference")
+  @@index([storeId, depositedAt(sort: Desc)], map: "idx_cash_deposit_store_deposited")
+  @@index([storeId, date], map: "idx_cash_deposit_store_date")
+  @@map("commerce_cash_deposits")
+}
+
+// A count that did not match. One row per count (countId is unique); a newer count of the same
+// day supersedes the older ones by marking them resolved.
+model CashVariance {
+  id          String    @id @default(uuid()) @db.Uuid
+  storeId     String    @db.Uuid
+  date        DateTime  @db.Date
+  countId     String    @unique(map: "uq_cash_variance_count") @db.Uuid
+  amountPaise Int
+  // open, explained (closed with a manager note), resolved (superseded by a recount).
+  status      String    @default("open")
+  note        String?
+  resolvedAt  DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@index([storeId, status, date(sort: Desc)], map: "idx_cash_variance_store_status")
+  @@index([storeId, date], map: "idx_cash_variance_store_date")
+  @@map("commerce_cash_variances")
+}
+
+// Append-only ledger of manual stock movements (consumption, receipts outside a purchase order,
+// corrections). The quantity itself is commerce_material_stock, changed in the same transaction.
+model StockMovement {
+  id                 String   @id @default(uuid()) @db.Uuid
+  storeId            String   @db.Uuid
+  // The material (commerce_materials.id), plain uuid like the stock row it moves.
+  itemId             String   @db.Uuid
+  // consumption, receipt, correction.
+  kind               String
+  deltaMilli         Int
+  quantityAfterMilli Int
+  reason             String?
+  byUserId           String?
+  byName             String
+  idempotencyKey     String?
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([storeId, itemId, idempotencyKey], map: "uq_stock_movement_key")
+  @@index([storeId, itemId, createdAt(sort: Desc)], map: "idx_stock_movement_item")
+  @@map("commerce_stock_movements")
+}
+
+// A floor worker's "this is running low". One row per store and material, replaced by the next
+// flag. It counts as open until the stock record is updated afterwards and is back above its
+// reorder level.
+model StockFlag {
+  id              String   @id @default(uuid()) @db.Uuid
+  storeId         String   @db.Uuid
+  itemId          String   @db.Uuid
+  // low, critical, out.
+  level           String
+  note            String?
+  raisedByUserId  String?
+  raisedByName    String
+  raisedAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([storeId, itemId], map: "uq_stock_flag_item")
+  @@index([storeId, raisedAt(sort: Desc)], map: "idx_stock_flag_store_raised")
+  @@map("commerce_stock_flags")
+}
+
+// One reading per store per day: 409 on a second one, so analytics never double-count a day.
+model ResourceReading {
+  id                  String   @id @default(uuid()) @db.Uuid
+  storeId             String   @db.Uuid
+  date                DateTime @db.Date
+  waterMilliLitres    Int?
+  electricityMilliKwh Int?
+  detergentMilliKg    Int?
+  notes               String?
+  byUserId            String?
+  byName              String
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([storeId, date], map: "uq_resource_reading_day")
+  @@map("commerce_resource_readings")
+}
+
+model StoreArea {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique(map: "uq_store_area_name")
+  city      String   @default("")
+  pincodes  String[]
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  members StoreAreaMember[]
+
+  @@map("commerce_areas")
+}
+
+// A store is in at most one area (storeId is unique).
+model StoreAreaMember {
+  id      String   @id @default(uuid()) @db.Uuid
+  areaId  String   @db.Uuid
+  storeId String   @unique(map: "uq_area_member_store") @db.Uuid
+
+  area StoreArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+
+  @@index([areaId], map: "idx_area_member_area")
+  @@map("commerce_area_members")
+}
+
+// One row per price a scope sets for a service and garment type. scope is global, area or
+// store; scopeId is the area or store id, and the nil uuid for global. garment and category
+// are copied from the price list row the garment type id came from, which is what order
+// pricing matches on.
+model PriceOverride {
+  id               String   @id @default(uuid()) @db.Uuid
+  scope            String
+  scopeId          String   @db.Uuid
+  serviceId        String   @db.Uuid
+  garmentTypeId    String   @db.Uuid
+  garment          String
+  category         String
+  ratePaise        Int
+  expressRatePaise Int
+  updatedByName    String
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([scope, scopeId, serviceId, garmentTypeId], map: "uq_price_override_item")
+  @@index([scope, serviceId], map: "idx_price_override_scope_service")
+  @@map("commerce_price_overrides")
+}
+
+// Append-only history of every price change: who, when, old and new (null when added or removed).
+model PriceChange {
+  id            String   @id @default(uuid()) @db.Uuid
+  scope         String
+  scopeId       String   @db.Uuid
+  serviceId     String   @db.Uuid
+  garmentTypeId String   @db.Uuid
+  fromPaise     Int?
+  toPaise       Int?
+  byUserId      String?
+  byName        String
+  at            DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([at(sort: Desc)], map: "idx_price_change_at")
+  @@index([scope, scopeId, at(sort: Desc)], map: "idx_price_change_scope")
+  @@map("commerce_price_changes")
+}

@@ -1,0 +1,154 @@
+// P01 customer account: the signed-in customer's own profile, addresses, garment
+// profiles, pickup slots and the app-order details that sit beside the core order.
+//
+// No relations to core.prisma models on purpose: that file belongs to the core module,
+// so these tables point at it with plain uuid columns (indexed) and the services check
+// ownership. Open sets are TEXT with a CHECK in the migration, not enums, so another
+// package can never collide with a type name.
+
+// Maps one gateway user to one core Customer; created on the customer's first request.
+model CustomerProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  // The gateway user id (x-user-id). Unique: one profile per account.
+  userId           String   @unique(map: "uq_customer_profile_user") @db.Uuid
+  // The core Customer the staff screens show. Unique: one account per customer record.
+  customerId       String   @unique(map: "uq_customer_profile_customer") @db.Uuid
+  defaultAddressId String?  @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("commerce_customer_profiles")
+}
+
+model CustomerAddress {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @db.Uuid
+  label      String
+  line1      String
+  line2      String   @default("")
+  landmark   String   @default("")
+  city       String
+  pincode    String
+  latitude   Float?
+  longitude  Float?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([customerId, createdAt(sort: Desc)], map: "idx_customer_address_owner")
+  @@map("commerce_customer_addresses")
+}
+
+model CustomerGarmentProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  customerId       String   @db.Uuid
+  name             String
+  garmentTypeId    String?  @db.Uuid
+  fabric           String   @default("unknown")
+  colour           String   @default("")
+  brand            String   @default("")
+  washInstructions String[]
+  avoid            String[]
+  notes            String   @default("")
+  isFavourite      Boolean  @default(false)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([customerId, isFavourite(sort: Desc), createdAt(sort: Desc)], map: "idx_garment_profile_owner")
+  @@map("commerce_customer_garment_profiles")
+}
+
+// A photo reference (an https URL; no file storage yet) on an order or a garment profile.
+model CustomerPhoto {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @db.Uuid
+  // 'order' or 'garment_profile'.
+  ownerType  String
+  ownerId    String   @db.Uuid
+  // The order item the photo is about, for an order photo.
+  itemId     String?  @db.Uuid
+  url        String
+  note       String   @default("")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([ownerType, ownerId, createdAt], map: "idx_customer_photo_owner")
+  @@map("commerce_customer_photos")
+}
+
+// Optional per-store override of the slot rules; a store without a row uses the defaults.
+model PickupSlotConfig {
+  id              String   @id @default(uuid()) @db.Uuid
+  storeId         String   @unique(map: "uq_pickup_slot_config_store") @db.Uuid
+  slotMinutes     Int      @default(120)
+  capacityPerSlot Int      @default(8)
+  leadMinutes     Int      @default(120)
+  horizonDays     Int      @default(7)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("commerce_pickup_slot_configs")
+}
+
+// One row per store window, created the first time the window is listed. `booked` moves
+// only through single conditional UPDATEs, so the last place cannot be sold twice.
+model PickupSlot {
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String   @db.Uuid
+  startsAt  DateTime @db.Timestamptz(6)
+  endsAt    DateTime @db.Timestamptz(6)
+  capacity  Int
+  booked    Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([storeId, startsAt], map: "uq_pickup_slot_window")
+  @@map("commerce_pickup_slots")
+}
+
+// What an app order has beyond the core order: its slot, addresses and payment choice.
+model CustomerOrder {
+  id                String   @id @default(uuid()) @db.Uuid
+  orderId           String   @unique(map: "uq_customer_order_order") @db.Uuid
+  customerId        String   @db.Uuid
+  // Caller's Idempotency-Key; null when the client sent none.
+  idempotencyKey    String?
+  pickupSlotId      String   @db.Uuid
+  // Snapshots of the slot window and the addresses, so a later edit cannot rewrite history.
+  pickupFrom        DateTime @db.Timestamptz(6)
+  pickupTo          DateTime @db.Timestamptz(6)
+  pickupAddressId   String?  @db.Uuid
+  pickupAddress     String
+  deliveryAddressId String?  @db.Uuid
+  deliveryAddress   String
+  paymentMethod     String
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([customerId, idempotencyKey], map: "uq_customer_order_idempotency")
+  @@index([pickupSlotId], map: "idx_customer_order_slot")
+  @@map("commerce_customer_orders")
+}
+
+// Per-item extras of an app order (fabric, note, which garment profile it was).
+model CustomerOrderLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  orderId          String   @db.Uuid
+  orderItemId      String   @unique(map: "uq_customer_order_line_item") @db.Uuid
+  customerId       String   @db.Uuid
+  garmentTypeId    String   @db.Uuid
+  garmentProfileId String?  @db.Uuid
+  fabric           String   @default("unknown")
+  note             String   @default("")
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([orderId], map: "idx_customer_order_line_order")
+  @@index([garmentProfileId, createdAt(sort: Desc)], map: "idx_customer_order_line_profile")
+  @@map("commerce_customer_order_lines")
+}
+
+// What has been paid against an order. Money only ever goes up here; the core order keeps
+// the paid / part_paid / unpaid label.
+model OrderPaidTotal {
+  orderId   String   @id @db.Uuid
+  paidPaise Int
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("commerce_order_paid_totals")
+}

@@ -55,12 +55,35 @@ services:
     # step to a service as soon as it gets its first model.
     # --include=dev: NODE_ENV=production also applies at build time and would skip
     # the TypeScript and @types packages tsc needs. generate:openapi snapshots the docs.
-    buildCommand: npm ci --include=dev && npm run build && npm run generate:openapi && npm run db:migrate
+    #
+    # The last step creates the team's dashboard logins (scripts/seed-team-users.mjs).
+    # It is parenthesised so that `|| echo` only forgives the SEED: without the
+    # brackets, `a && b && c || d` would also swallow a failed migration and ship
+    # a service with half-created tables. The seed is idempotent and never touches
+    # an account that already exists, so running it on every deploy is safe.
+    buildCommand: npm ci --include=dev && npm run build && npm run generate:openapi && npm run db:migrate && (npm run db:seed:team || echo "[seed:team] did not complete - see the log above; the deploy continues")
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - fromGroup: loc-shared
+      # Passwords for the team logins created at build time. Type them into the
+      # Render dashboard (Environment); they are never stored in this repo. An
+      # account whose password is unset is skipped, not created with a default.
+      # SEED_TEAM_PASSWORD is a single fallback for any role without its own.
+      - key: SEED_SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_MANAGER_PASSWORD
+        sync: false
+      - key: SEED_STAFF_PASSWORD
+        sync: false
+      - key: SEED_TEAM_PASSWORD
+        sync: false
+      # Optional: a commerce store UUID for the manager and staff accounts.
+      - key: SEED_STORE_ID
+        sync: false
       # POOLED connection (transaction pooler, :6543) for every normal query.
       - key: DATABASE_URL
         sync: false
@@ -198,6 +221,15 @@ services:
         value: commerce
       - key: CACHE_NAMESPACE
         value: commerce
+      # Other services this one calls directly (never through the gateway), with the internal secret.
+      - key: GATEWAY_SERVICE_URL
+        value: https://loc-gateway-service.onrender.com
+      - key: LOGISTICS_SERVICE_URL
+        value: https://loc-logistics-service.onrender.com
+      - key: FINANCE_SERVICE_URL
+        value: https://loc-finance-service.onrender.com
+      - key: GROWTH_SERVICE_URL
+        value: https://loc-growth-service.onrender.com
       - key: CORS_ORIGIN
         value: https://loc-gateway-service.onrender.com
       - key: TRUST_PROXY
@@ -229,6 +261,15 @@ services:
         value: logistics
       - key: CACHE_NAMESPACE
         value: logistics
+      # Other services this one calls directly (never through the gateway), with the internal secret.
+      - key: GATEWAY_SERVICE_URL
+        value: https://loc-gateway-service.onrender.com
+      - key: COMMERCE_SERVICE_URL
+        value: https://loc-commerce-service.onrender.com
+      - key: FINANCE_SERVICE_URL
+        value: https://loc-finance-service.onrender.com
+      - key: GROWTH_SERVICE_URL
+        value: https://loc-growth-service.onrender.com
       - key: CORS_ORIGIN
         value: https://loc-gateway-service.onrender.com
       - key: TRUST_PROXY
@@ -267,6 +308,15 @@ services:
         value: finance
       - key: CACHE_NAMESPACE
         value: finance
+      # Other services this one calls directly (never through the gateway), with the internal secret.
+      - key: GATEWAY_SERVICE_URL
+        value: https://loc-gateway-service.onrender.com
+      - key: COMMERCE_SERVICE_URL
+        value: https://loc-commerce-service.onrender.com
+      - key: LOGISTICS_SERVICE_URL
+        value: https://loc-logistics-service.onrender.com
+      - key: GROWTH_SERVICE_URL
+        value: https://loc-growth-service.onrender.com
       - key: CORS_ORIGIN
         value: https://loc-gateway-service.onrender.com
       - key: TRUST_PROXY
@@ -309,6 +359,15 @@ services:
         value: growth
       - key: CACHE_NAMESPACE
         value: growth
+      # Other services this one calls directly (never through the gateway), with the internal secret.
+      - key: GATEWAY_SERVICE_URL
+        value: https://loc-gateway-service.onrender.com
+      - key: COMMERCE_SERVICE_URL
+        value: https://loc-commerce-service.onrender.com
+      - key: LOGISTICS_SERVICE_URL
+        value: https://loc-logistics-service.onrender.com
+      - key: FINANCE_SERVICE_URL
+        value: https://loc-finance-service.onrender.com
       # Notification Hub providers. A channel left unset reports "not configured"
       # and sends nothing. Paste the SMS values from gateway-service/.env.
       - key: TRANSMIT_SMS_API_KEY

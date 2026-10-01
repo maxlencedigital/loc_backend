@@ -1,0 +1,325 @@
+// Store floor: garment pieces, batches, machines, quality checks and the small tables the
+// counter workflow needs (order notes, hand-over records, walk-in request keys, capacity
+// settings, fabric risk rules).
+//
+// References to orders, stores, services and users are plain uuid columns with no foreign
+// key: those models live in other files and Prisma wants both sides of a relation. Foreign
+// keys below stay inside this file. A piece is in at most one batch at a time because the
+// batch is a single column on the piece (activeBatchId); the membership table is history.
+
+enum FloorPieceStage {
+  received
+  sorted
+  washing
+  drying
+  quality_check
+  packed
+}
+
+enum FloorMachineType {
+  washer
+  dryer
+  press
+  iron
+  other
+}
+
+enum FloorMachineState {
+  idle
+  reserved
+  running
+  maintenance
+  faulted
+}
+
+enum FloorBatchStage {
+  washing
+  drying
+}
+
+enum FloorBatchStatus {
+  planned
+  in_machine
+  finished
+  cancelled
+}
+
+enum FloorFaultSeverity {
+  low
+  medium
+  high
+  stopped
+}
+
+enum FloorFaultStatus {
+  open
+  resolved
+}
+
+enum FloorCheckStatus {
+  ok
+  needs_attention
+}
+
+enum FloorQcOutcome {
+  pass
+  fail
+}
+
+// Configuration the process suggestion reads. One row per fabric.
+model FabricRiskRule {
+  id              String   @id @default(uuid()) @db.Uuid
+  fabric          String   @unique
+  risk            String
+  handling        String
+  washProgramme   String
+  dryProgramme    String
+  maxTemperatureC Int
+  cycle           String
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("commerce_fabric_risk_rules")
+}
+
+// One row per physical garment. Order reference, due date and priority are copied from the
+// order at check-in so the floor lists need no join into the orders table.
+model GarmentPiece {
+  id                  String          @id @default(uuid()) @db.Uuid
+  storeId             String          @db.Uuid
+  orderId             String          @db.Uuid
+  orderRef            String
+  serviceId           String          @db.Uuid
+  garmentTypeId       String?         @db.Uuid
+  tagCode             String
+  garment             String
+  condition           String          @default("ok")
+  fabric              String          @default("unknown")
+  colour              String          @default("multi")
+  soilLevel           String          @default("normal")
+  riskClass           String          @default("low")
+  careFlags           String[]
+  note                String?
+  priority            String          @default("standard")
+  dueAt               DateTime        @db.Timestamptz(6)
+  stage               FloorPieceStage @default(received)
+  activeBatchId       String?         @db.Uuid
+  processWash         String?
+  processDry          String?
+  processTemperatureC Int?
+  processCycle        String?
+  suggestedWash       String?
+  suggestedDry        String?
+  overrideReason      String?
+  processSetBy        String?
+  processSetAt        DateTime?       @db.Timestamptz(6)
+  qcPassedAt          DateTime?       @db.Timestamptz(6)
+  reworkCount         Int             @default(0)
+  receivedFrom        String
+  receivedByName      String
+  createdAt           DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime        @updatedAt @db.Timestamptz(6)
+
+  activeBatch FloorBatch?        @relation("ActiveBatch", fields: [activeBatchId], references: [id])
+  memberships FloorBatchPiece[]
+
+  @@unique([storeId, tagCode])
+  @@index([orderId])
+  @@index([storeId, stage, dueAt], map: "idx_piece_store_stage_due")
+  @@index([activeBatchId])
+  @@map("commerce_garment_pieces")
+}
+
+// Tag numbers per store: one atomic UPDATE hands out a block, so two check-ins never share a tag.
+model FloorTagCounter {
+  storeId String @id @db.Uuid
+  value   Int
+
+  @@map("commerce_floor_tag_counters")
+}
+
+model FloorMachine {
+  id            String            @id @default(uuid()) @db.Uuid
+  storeId       String            @db.Uuid
+  code          String
+  name          String
+  type          FloorMachineType
+  capacityGrams Int
+  cycleMinutes  Int               @default(45)
+  state         FloorMachineState @default(idle)
+  currentBatchId String?          @db.Uuid
+  reservedUntil DateTime?         @db.Timestamptz(6)
+  freeAt        DateTime?         @db.Timestamptz(6)
+  createdAt     DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime          @updatedAt @db.Timestamptz(6)
+
+  batches FloorBatch[]
+  checks  FloorMachineCheck[]
+  faults  FloorMachineFault[]
+
+  @@unique([storeId, code])
+  @@index([storeId, state], map: "idx_machine_store_state")
+  @@index([storeId, type], map: "idx_machine_store_type")
+  @@map("commerce_floor_machines")
+}
+
+model FloorMachineCheck {
+  id              String           @id @default(uuid()) @db.Uuid
+  machineId       String           @db.Uuid
+  storeId         String           @db.Uuid
+  checkDate       DateTime         @db.Date
+  status          FloorCheckStatus
+  checklist       Json
+  note            String?
+  checkedByName   String
+  checkedByUserId String?
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+
+  machine FloorMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  // One check per machine per day; recording again the same day replaces it.
+  @@unique([machineId, checkDate], map: "uq_machine_check_day")
+  @@map("commerce_floor_machine_checks")
+}
+
+model FloorMachineFault {
+  id               String             @id @default(uuid()) @db.Uuid
+  machineId        String             @db.Uuid
+  storeId          String             @db.Uuid
+  description      String
+  severity         FloorFaultSeverity
+  status           FloorFaultStatus   @default(open)
+  reportedByName   String
+  reportedByUserId String?
+  resolvedAt       DateTime?          @db.Timestamptz(6)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
+
+  machine FloorMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@index([machineId, createdAt(sort: Desc)], map: "idx_fault_machine_created")
+  @@index([storeId, status, createdAt(sort: Desc)], map: "idx_fault_store_status")
+  @@map("commerce_floor_machine_faults")
+}
+
+model FloorBatch {
+  id              String           @id @default(uuid()) @db.Uuid
+  storeId         String           @db.Uuid
+  serviceId       String           @db.Uuid
+  stage           FloorBatchStage
+  status          FloorBatchStatus @default(planned)
+  machineId       String?          @db.Uuid
+  dueAt           DateTime?        @db.Timestamptz(6)
+  startedAt       DateTime?        @db.Timestamptz(6)
+  finishedAt      DateTime?        @db.Timestamptz(6)
+  loadWeightGrams Int?
+  notes           String?
+  createdByName   String
+  createdByUserId String?
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+
+  machine      FloorMachine?     @relation(fields: [machineId], references: [id])
+  members      FloorBatchPiece[]
+  activePieces GarmentPiece[]    @relation("ActiveBatch")
+
+  @@index([storeId, status, dueAt], map: "idx_batch_store_status_due")
+  @@index([storeId, serviceId], map: "idx_batch_store_service")
+  @@index([machineId])
+  @@map("commerce_floor_batches")
+}
+
+model FloorBatchPiece {
+  id      String   @id @default(uuid()) @db.Uuid
+  batchId String   @db.Uuid
+  pieceId String   @db.Uuid
+  addedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  batch FloorBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  piece GarmentPiece @relation(fields: [pieceId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, pieceId], map: "uq_batch_piece")
+  @@index([pieceId])
+  @@map("commerce_floor_batch_pieces")
+}
+
+model QualityCheck {
+  id        String         @id @default(uuid()) @db.Uuid
+  orderId   String         @db.Uuid
+  storeId   String         @db.Uuid
+  outcome   FloorQcOutcome
+  byName    String
+  byUserId  String?
+  createdAt DateTime       @default(now()) @db.Timestamptz(6)
+
+  results QualityCheckResult[]
+
+  @@index([orderId, createdAt(sort: Desc)], map: "idx_qc_order_created")
+  @@map("commerce_quality_checks")
+}
+
+model QualityCheckResult {
+  id                      String  @id @default(uuid()) @db.Uuid
+  checkId                 String  @db.Uuid
+  pieceId                 String  @db.Uuid
+  passed                  Boolean
+  note                    String?
+  comparedWithPickupNotes Boolean @default(false)
+
+  check QualityCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+
+  @@index([checkId])
+  @@index([pieceId])
+  @@map("commerce_quality_check_results")
+}
+
+model OrderNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @db.Uuid
+  storeId   String   @db.Uuid
+  note      String
+  byName    String
+  byUserId  String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([orderId, createdAt], map: "idx_order_note_order_created")
+  @@map("commerce_order_notes")
+}
+
+// The hand-over at the counter. The unique order id is what makes a second collection impossible.
+model OrderCollection {
+  id                 String   @id @default(uuid()) @db.Uuid
+  orderId            String   @unique @db.Uuid
+  storeId            String   @db.Uuid
+  collectedBy        String
+  signature          String?
+  paymentOutstanding Boolean
+  byName             String
+  byUserId           String?
+  collectedAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("commerce_order_collections")
+}
+
+// A retried counter booking returns the first order instead of creating a second.
+model WalkInRequest {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  key       String
+  orderId   String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([userId, key], map: "uq_walkin_user_key")
+  @@map("commerce_walkin_requests")
+}
+
+// Per-store override of the daily capacity on the store record, and the share kept for express.
+model CapacitySetting {
+  id                String   @id @default(uuid()) @db.Uuid
+  storeId           String   @unique @db.Uuid
+  dailyKg           Int?
+  expressReservePct Int      @default(20)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("commerce_capacity_settings")
+}

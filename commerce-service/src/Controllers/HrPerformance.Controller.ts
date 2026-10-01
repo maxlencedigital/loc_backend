@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { PerformanceService } from "../Services/Performance.Service.js";
 
 /**
  * @openapi
@@ -60,12 +61,10 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAppraisals = async (_req: Request, res: Response) => {
+const listAppraisals = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.listAppraisals(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -116,15 +115,14 @@ const listAppraisals = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "This person already has an appraisal for that cycle."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createAppraisal = async (req: Request, res: Response) => {
+const createAppraisal = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["employeeId", "cycle", "scheduledFor"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await PerformanceService.createAppraisal(req.user as RequestUser, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -157,13 +155,10 @@ const createAppraisal = async (req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const scheduleAppraisals = async (req: Request, res: Response) => {
+const scheduleAppraisals = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["employeeIds", "scheduledFor"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.scheduleAppraisals(req.user as RequestUser, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -208,12 +203,10 @@ const scheduleAppraisals = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAppraisal = async (_req: Request, res: Response) => {
+const getAppraisal = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.getAppraisal(req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -268,16 +261,16 @@ const getAppraisal = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The appraisal has started and can no longer be rescheduled."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateAppraisal = async (_req: Request, res: Response) => {
+const updateAppraisal = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.updateAppraisal(req.params.id, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -312,17 +305,16 @@ const updateAppraisal = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The appraisal was not conducted yet, or is already completed."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const completeAppraisal = async (req: Request, res: Response) => {
+const completeAppraisal = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["outcome"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.completeAppraisal(req.user as RequestUser, req.params.id, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -359,17 +351,16 @@ const completeAppraisal = async (req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The rating was already recorded and cannot change."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const conductAppraisal = async (req: Request, res: Response) => {
+const conductAppraisal = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["rating"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.conductAppraisal(req.user as RequestUser, req.params.id, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -422,12 +413,10 @@ const conductAppraisal = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getEmployeePerformance = async (_req: Request, res: Response) => {
+const getEmployeePerformance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.getEmployeePerformance(req.params.id, resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -473,12 +462,10 @@ const getEmployeePerformance = async (_req: Request, res: Response) => {
  *                               rank: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPerformanceSummary = async (_req: Request, res: Response) => {
+const getPerformanceSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PerformanceService.getSummary(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -26,7 +26,22 @@ const safeEqualHex = (expected: string, given: string): boolean => {
 const unavailable = () =>
   new CustomException("Payments are unavailable right now. Please try again.", serviceUnavailable);
 
-const call = async <T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> => {
+// Errors for a request Razorpay answered with a 4xx: the call was understood and refused, so (unlike
+// a timeout) it is known not to have happened.
+const rejections = new WeakSet<object>();
+const rejected = () => {
+  const error = unavailable();
+  rejections.add(error);
+  return error;
+};
+const isProviderRejection = (error: unknown): boolean => typeof error === "object" && error !== null && rejections.has(error);
+
+const call = async <T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {}
+): Promise<T> => {
   if (!isConfigured()) {
     console.error("[payments] RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set.");
     throw unavailable();
@@ -37,7 +52,7 @@ const call = async <T>(method: "GET" | "POST", path: string, body?: unknown): Pr
   try {
     response = await fetch(`${apiBase()}${path}`, {
       method,
-      headers: { Authorization: `Basic ${auth}`, "content-type": "application/json" },
+      headers: { Authorization: `Basic ${auth}`, "content-type": "application/json", ...extraHeaders },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
@@ -50,7 +65,7 @@ const call = async <T>(method: "GET" | "POST", path: string, body?: unknown): Pr
   if (!response.ok) {
     // Razorpay explains a rejection in error.description; users never see it.
     console.error(`[payments] Razorpay ${method} ${path} -> HTTP ${response.status}: ${raw.slice(0, 300)}`);
-    throw unavailable();
+    throw response.status >= 400 && response.status < 500 ? rejected() : unavailable();
   }
   try {
     return JSON.parse(raw) as T;
@@ -141,6 +156,72 @@ const capturePayment = async (
   }
 };
 
+interface RazorpayRefundEntity {
+  id: string;
+  payment_id: string;
+  amount: number;
+  status: string;
+}
+
+export interface IGatewayRefund {
+  id: string;
+  paymentId: string;
+  amountPaise: number;
+  status: string;
+}
+
+// The refund id is sent as Razorpay's refund idempotency header, so a retry after a timeout
+// returns the refund already created instead of making a second one.
+const refundPayment = async (
+  razorpayPaymentId: string,
+  amountPaise: number,
+  notes: Record<string, string>,
+  idempotencyKey?: string
+): Promise<IGatewayRefund> => {
+  try {
+    const entity = await call<RazorpayRefundEntity>(
+      "POST",
+      `/payments/${encodeURIComponent(razorpayPaymentId)}/refund`,
+      { amount: amountPaise, notes },
+      idempotencyKey ? { "X-Refund-Idempotency": idempotencyKey } : {}
+    );
+    if (!entity?.id) throw new CustomException("Unrecognised refund data from the provider.", serviceUnavailable);
+    return { id: entity.id, paymentId: entity.payment_id, amountPaise: entity.amount, status: entity.status };
+  } catch (error) {
+    throw toCustomException(error);
+  }
+};
+
+interface PaymentListPage {
+  items: IGatewayPayment[];
+  // Rows Razorpay returned that are not payments for one of our orders.
+  ignored: number;
+  fetched: number;
+}
+
+// One page of Razorpay payments created in [fromUnix, toUnix], for reconciliation.
+const listPayments = async (params: {
+  fromUnix: number;
+  toUnix: number;
+  count: number;
+  skip: number;
+}): Promise<PaymentListPage> => {
+  try {
+    const query = `from=${params.fromUnix}&to=${params.toUnix}&count=${params.count}&skip=${params.skip}`;
+    const page = await call<{ items?: RazorpayPaymentEntity[] }>("GET", `/payments?${query}`);
+    const entities = Array.isArray(page?.items) ? page.items : [];
+    const items: IGatewayPayment[] = [];
+    for (const entity of entities) {
+      if (entity?.id && entity.order_id && KNOWN_STATUSES.includes(entity.status as PaymentStatus)) {
+        items.push(toGatewayPayment(entity));
+      }
+    }
+    return { items, ignored: entities.length - items.length, fetched: entities.length };
+  } catch (error) {
+    throw toCustomException(error);
+  }
+};
+
 /** Checks the signature Razorpay Checkout returns to the app: HMAC(order_id|payment_id). */
 const verifyCheckoutSignature = (orderId: string, paymentId: string, signature: string): boolean => {
   if (!isConfigured() || !signature) return false;
@@ -159,6 +240,9 @@ export const PaymentClient = {
   createOrder,
   fetchPayment,
   capturePayment,
+  refundPayment,
+  listPayments,
+  isProviderRejection,
   verifyCheckoutSignature,
   verifyWebhookSignature,
   toGatewayPayment,

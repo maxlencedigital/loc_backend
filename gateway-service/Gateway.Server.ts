@@ -10,6 +10,7 @@ import { activityLogger } from "./src/Middleware/ActivityLogger.js";
 import { apiLimiter } from "./src/Middleware/RateLimiter.js";
 import setupSwagger from "./src/Swagger/Swagger.js";
 import { assertValidOtpDelivery, otpInResponse } from "./src/Services/OtpDelivery.js";
+import { twoFactorConfigured } from "./src/Services/TwoFactorCrypto.js";
 
 // DATABASE_URL carries host, user, password and database in one string, so
 // the discrete DB_* vars are for local docker-compose only.
@@ -49,6 +50,13 @@ if (otpInResponse()) {
     "[SECURITY] OTP_DELIVERY=response: no SMS or email is sent and one-time codes are returned in API " +
       "responses. Registration, login-by-OTP and password reset for CUSTOMER accounts are open to anyone " +
       "who knows the phone or email. Switch to OTP_DELIVERY=send before real users sign up."
+  );
+}
+
+if (!twoFactorConfigured()) {
+  console.warn(
+    "[two-factor] TWO_FACTOR_ENCRYPTION_KEY is unset or not 32 bytes of base64: the 2FA endpoints answer 503, " +
+      "and an account that already has 2FA on cannot sign in until it is set."
   );
 }
 

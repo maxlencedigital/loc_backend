@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { requestActor } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { HrRiderService } from "../Services/HrRider.Service.js";
 
 /**
  * @openapi
@@ -62,12 +63,13 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listRiderApplications = async (_req: Request, res: Response) => {
+const listRiderApplications = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.listApplications(req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -94,12 +96,13 @@ const listRiderApplications = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderApplication = async (_req: Request, res: Response) => {
+const getRiderApplication = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.getApplication(req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -151,12 +154,14 @@ const getRiderApplication = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "Verification is incomplete."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const approveRiderApplication = async (_req: Request, res: Response) => {
+const approveRiderApplication = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.approve(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -188,19 +193,22 @@ const approveRiderApplication = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const rejectRiderApplication = async (req: Request, res: Response) => {
+const rejectRiderApplication = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["reason"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.reject(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -233,19 +241,22 @@ const rejectRiderApplication = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const requestRiderDocuments = async (req: Request, res: Response) => {
+const requestRiderDocuments = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["documents"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.requestDocuments(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -281,19 +292,22 @@ const requestRiderDocuments = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const verifyRiderApplication = async (req: Request, res: Response) => {
+const verifyRiderApplication = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["identityVerified", "vehicleVerified", "insuranceValid"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.verify(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -341,12 +355,13 @@ const verifyRiderApplication = async (req: Request, res: Response) => {
  *                               distanceKm: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listRiderPerformance = async (_req: Request, res: Response) => {
+const listRiderPerformance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.listPerformance(req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -391,12 +406,13 @@ const listRiderPerformance = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderEligibility = async (_req: Request, res: Response) => {
+const getRiderEligibility = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.eligibility(req.params.id as string) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -444,12 +460,13 @@ const getRiderEligibility = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderPerformance = async (_req: Request, res: Response) => {
+const getRiderPerformance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.getPerformance(req.params.id as string, req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -480,18 +497,22 @@ const getRiderPerformance = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reinstateRider = async (_req: Request, res: Response) => {
+const reinstateRider = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.reinstate(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -523,19 +544,22 @@ const reinstateRider = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const suspendRider = async (req: Request, res: Response) => {
+const suspendRider = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["reason"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await HrRiderService.suspend(actor, req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }

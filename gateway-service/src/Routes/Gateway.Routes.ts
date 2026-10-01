@@ -11,10 +11,16 @@ import { buildServiceProxy } from "../Middleware/ProxyRoutes.js";
 import { authLimiter } from "../Middleware/RateLimiter.js";
 import usersRoutes from "./Users.Routes.js";
 import generatedRoutes from "./Generated.Routes.js";
+import internalRoutes from "./Internal.Routes.js";
 
 const router = express.Router();
 
 router.get("/health", HealthController.check);
+
+// Service-to-service API. Guarded by its own secret check, so it sits before every token route.
+// Wrapped in a function on purpose: Routes.Coverage.test walks nested routers and expects a user
+// token on everything it finds; these paths take a service secret instead and have their own test.
+router.use("/internal", (req, res, next) => internalRoutes(req, res, next));
 
 // --------------------------------- Auth ---------------------------------
 

@@ -1,0 +1,400 @@
+// Business asset register (OpsEquipment) and IT assets, licences and requests (OpsIt).
+//
+// Money is integer paise; every date that drives logic (service due, warranty, licence
+// expiry) is a real indexed column. References to other modules (stores, vendors, HR
+// employees, the floor's machines, gateway users) are plain uuid columns with no foreign
+// key: the owner of that data is asked when it matters. Foreign keys below stay inside
+// this file and cascade, because a child row means nothing without its parent.
+
+// ----------------------------------------------------------------- equipment
+
+enum EquipmentType {
+  washer
+  dryer
+  press
+  iron
+  boiler
+  generator
+  other
+}
+
+enum EquipmentStatus {
+  active
+  under_repair
+  out_of_service
+  retired
+}
+
+enum EquipmentInspectionResult {
+  pass
+  fail
+  needs_attention
+}
+
+model Equipment {
+  id                String          @id @default(uuid()) @db.Uuid
+  assetTag          String          @unique
+  name              String
+  type              EquipmentType
+  storeId           String          @db.Uuid
+  // The floor machine this asset corresponds to (store-floor module); never read or written here.
+  machineId         String?         @db.Uuid
+  make              String?
+  model             String?
+  serialNumber      String?
+  purchasedOn       DateTime?       @db.Date
+  purchaseCostPaise Int?
+  capacityGrams     Int?
+  status            EquipmentStatus @default(active)
+  retiredAt         DateTime?       @db.Timestamptz(6)
+  retiredReason     String?
+  createdByUserId   String?         @db.Uuid
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(6)
+
+  statusEvents EquipmentStatusEvent[]
+  inspections  EquipmentInspection[]
+  repairs      EquipmentRepair[]
+  tasks        EquipmentMaintenanceTask[]
+  logs         EquipmentMaintenanceLog[]
+
+  @@index([storeId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([type, createdAt])
+  @@map("commerce_equipment")
+}
+
+// Append-only lifecycle history; written in the same transaction as the status change.
+model EquipmentStatusEvent {
+  id          String           @id @default(uuid()) @db.Uuid
+  equipmentId String           @db.Uuid
+  fromStatus  EquipmentStatus?
+  toStatus    EquipmentStatus
+  reason      String?
+  byUserId    String?          @db.Uuid
+  byName      String
+  at          DateTime         @default(now()) @db.Timestamptz(6)
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([equipmentId, at])
+  @@map("commerce_equipment_status_events")
+}
+
+model EquipmentInspection {
+  id            String                    @id @default(uuid()) @db.Uuid
+  equipmentId   String                    @db.Uuid
+  inspectedOn   DateTime                  @db.Date
+  result        EquipmentInspectionResult
+  checklist     Json                      @default("[]")
+  notes         String?
+  inspectorUserId String?                 @db.Uuid
+  inspectorName String
+  createdAt     DateTime                  @default(now()) @db.Timestamptz(6)
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([equipmentId, inspectedOn])
+  @@map("commerce_equipment_inspections")
+}
+
+model EquipmentRepair {
+  id              String    @id @default(uuid()) @db.Uuid
+  equipmentId     String    @db.Uuid
+  reportedOn      DateTime  @db.Date
+  issue           String
+  costPaise       Int?
+  // The vendor module's id; not checked here.
+  vendorId        String?   @db.Uuid
+  resolvedOn      DateTime? @db.Date
+  downtimeMinutes Int?
+  notes           String?
+  createdByUserId String?   @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([equipmentId, reportedOn])
+  @@index([equipmentId, resolvedOn])
+  @@index([reportedOn])
+  @@map("commerce_equipment_repairs")
+}
+
+// One recurring service per row. nextDueOn is stored (lastDoneOn + everyDays) so the due
+// and overdue lists are a range scan on an index instead of arithmetic over every row.
+model EquipmentMaintenanceTask {
+  id          String    @id @default(uuid()) @db.Uuid
+  equipmentId String    @db.Uuid
+  name        String
+  everyDays   Int
+  lastDoneOn  DateTime? @db.Date
+  nextDueOn   DateTime  @db.Date
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([equipmentId, name])
+  @@index([nextDueOn])
+  @@map("commerce_equipment_maintenance_tasks")
+}
+
+// What was actually done and when. taskId has no foreign key so that replacing a schedule
+// never erases the service history.
+model EquipmentMaintenanceLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  equipmentId  String   @db.Uuid
+  taskId       String?  @db.Uuid
+  taskName     String
+  doneOn       DateTime @db.Date
+  costPaise    Int?
+  notes        String?
+  doneByUserId String?  @db.Uuid
+  doneByName   String
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  // Backstop for a double-submitted "service done": one record per task per day.
+  @@unique([taskId, doneOn])
+  @@index([equipmentId, doneOn])
+  @@map("commerce_equipment_maintenance_logs")
+}
+
+// ------------------------------------------------------------------------ IT
+
+enum ItDeviceType {
+  laptop
+  phone
+  tablet
+  printer
+  scanner
+  router
+  other
+}
+
+enum ItDeviceStatus {
+  in_stock
+  assigned
+  in_repair
+  retired
+}
+
+enum ItDeviceCondition {
+  new
+  good
+  fair
+  poor
+}
+
+enum ItDeviceEventKind {
+  registered
+  assigned
+  returned
+  status_changed
+}
+
+model ItDevice {
+  id                   String            @id @default(uuid()) @db.Uuid
+  assetTag             String            @unique
+  type                 ItDeviceType
+  make                 String?
+  model                String?
+  serialNumber         String?
+  purchasedOn          DateTime?         @db.Date
+  warrantyUntil        DateTime?         @db.Date
+  condition            ItDeviceCondition @default(good)
+  status               ItDeviceStatus    @default(in_stock)
+  // The HR module's employee id; set exactly when status is assigned (a CHECK enforces it).
+  assignedToEmployeeId String?           @db.Uuid
+  assignedAt           DateTime?         @db.Timestamptz(6)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(6)
+
+  events  ItDeviceEvent[]
+  repairs ItDeviceRepair[]
+
+  @@index([status, createdAt])
+  @@index([type, createdAt])
+  @@index([assignedToEmployeeId])
+  @@map("commerce_it_devices")
+}
+
+model ItDeviceEvent {
+  id         String             @id @default(uuid()) @db.Uuid
+  deviceId   String             @db.Uuid
+  kind       ItDeviceEventKind
+  fromStatus ItDeviceStatus?
+  toStatus   ItDeviceStatus
+  employeeId String?            @db.Uuid
+  condition  ItDeviceCondition?
+  note       String?
+  byUserId   String?            @db.Uuid
+  byName     String
+  at         DateTime           @default(now()) @db.Timestamptz(6)
+
+  device ItDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, at])
+  @@map("commerce_it_device_events")
+}
+
+model ItDeviceRepair {
+  id              String   @id @default(uuid()) @db.Uuid
+  deviceId        String   @db.Uuid
+  issue           String
+  costPaise       Int?
+  repairedOn      DateTime @db.Date
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  device ItDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, repairedOn])
+  @@map("commerce_it_device_repairs")
+}
+
+// seatsUsed is changed only under the licence's row lock, and a CHECK keeps it within
+// 0..seats, so a seat can never be oversold even by a buggy caller.
+model ItLicence {
+  id         String    @id @default(uuid()) @db.Uuid
+  software   String
+  vendor     String?
+  seats      Int
+  seatsUsed  Int       @default(0)
+  validUntil DateTime? @db.Date
+  costPaise  Int?
+  deletedAt  DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+
+  seatHolders ItLicenceSeat[]
+  events      ItLicenceEvent[]
+
+  @@index([deletedAt, software])
+  @@map("commerce_it_licences")
+}
+
+// Who holds a seat right now. Revoking deletes the row; the history lives in the events.
+model ItLicenceSeat {
+  id               String   @id @default(uuid()) @db.Uuid
+  licenceId        String   @db.Uuid
+  employeeId       String   @db.Uuid
+  assignedAt       DateTime @default(now()) @db.Timestamptz(6)
+  assignedByUserId String?  @db.Uuid
+
+  licence ItLicence @relation(fields: [licenceId], references: [id], onDelete: Cascade)
+
+  @@unique([licenceId, employeeId])
+  @@map("commerce_it_licence_seats")
+}
+
+enum ItLicenceEventKind {
+  assigned
+  revoked
+}
+
+model ItLicenceEvent {
+  id         String             @id @default(uuid()) @db.Uuid
+  licenceId  String             @db.Uuid
+  kind       ItLicenceEventKind
+  employeeId String             @db.Uuid
+  byUserId   String?            @db.Uuid
+  byName     String
+  at         DateTime           @default(now()) @db.Timestamptz(6)
+
+  licence ItLicence @relation(fields: [licenceId], references: [id], onDelete: Cascade)
+
+  @@index([licenceId, at])
+  @@map("commerce_it_licence_events")
+}
+
+enum ItRequestCategory {
+  device_problem
+  software_issue
+  access_request
+  new_device
+  other
+}
+
+enum ItRequestStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum ItRequestPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum ItRequestEventKind {
+  raised
+  status_changed
+  assigned
+  priority_changed
+  closed
+}
+
+model ItRequest {
+  id              String            @id @default(uuid()) @db.Uuid
+  category        ItRequestCategory
+  description     String
+  priority        ItRequestPriority @default(normal)
+  status          ItRequestStatus   @default(open)
+  deviceId        String?           @db.Uuid
+  raisedByUserId  String            @db.Uuid
+  raisedByName    String
+  // Gateway user doing the work; looked up over HTTP when set, name kept for display.
+  assigneeUserId  String?           @db.Uuid
+  assigneeName    String?
+  resolution      String?
+  closedAt        DateTime?         @db.Timestamptz(6)
+  closedByUserId  String?           @db.Uuid
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(6)
+
+  comments ItRequestComment[]
+  events   ItRequestEvent[]
+
+  @@index([createdAt])
+  @@index([raisedByUserId, createdAt])
+  @@index([status, createdAt])
+  @@index([category, createdAt])
+  @@map("commerce_it_requests")
+}
+
+model ItRequestComment {
+  id           String   @id @default(uuid()) @db.Uuid
+  requestId    String   @db.Uuid
+  authorUserId String?  @db.Uuid
+  authorName   String
+  message      String
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  request ItRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@map("commerce_it_request_comments")
+}
+
+model ItRequestEvent {
+  id         String             @id @default(uuid()) @db.Uuid
+  requestId  String             @db.Uuid
+  kind       ItRequestEventKind
+  fromStatus ItRequestStatus?
+  toStatus   ItRequestStatus?
+  detail     String?
+  byUserId   String?            @db.Uuid
+  byName     String
+  at         DateTime           @default(now()) @db.Timestamptz(6)
+
+  request ItRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, at])
+  @@map("commerce_it_request_events")
+}

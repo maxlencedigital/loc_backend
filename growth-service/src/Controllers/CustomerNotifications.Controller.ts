@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { NotificationService } from "../Services/Notification.Service.js";
+import { actorId } from "./Actor.js";
 
 /**
  * @openapi
@@ -41,12 +42,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                             to: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMyNotificationPreferences = async (_req: Request, res: Response) => {
+const getMyNotificationPreferences = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.getPreferences(actorId(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -89,13 +89,11 @@ const getMyNotificationPreferences = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setMyNotificationPreferences = async (req: Request, res: Response) => {
+const setMyNotificationPreferences = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["channels"]);
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.setPreferences(actorId(req), req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -149,12 +147,11 @@ const setMyNotificationPreferences = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMyNotifications = async (_req: Request, res: Response) => {
+const listMyNotifications = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.listMine(actorId(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -181,12 +178,11 @@ const listMyNotifications = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const markMyNotificationRead = async (_req: Request, res: Response) => {
+const markMyNotificationRead = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await NotificationService.markRead(actorId(req), req.params.id);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

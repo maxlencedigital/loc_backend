@@ -39,6 +39,12 @@ jest.mock("../Queries/OtpChallenge.Query.js", () => ({
 }));
 
 // Nothing here should dispatch a real SMS or email.
+jest.mock("../Queries/TwoFactor.Query.js", () => ({
+  TwoFactorQuery: { findCredential: jest.fn().mockResolvedValue(null) },
+}));
+jest.mock("../Queries/UserToken.Query.js", () => ({
+  UserTokenQuery: { invalidateOutstanding: jest.fn().mockResolvedValue(undefined) },
+}));
 jest.mock("./OtpSender.Service.js", () => ({
   OtpSender: {
     // Must resolve, not return undefined: the anti-enumeration paths call

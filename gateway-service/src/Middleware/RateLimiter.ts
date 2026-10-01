@@ -53,6 +53,8 @@ const authLimiter: RequestHandler = !rateLimitingEnabled
           // Verify/reset carry only the opaque challenge id, which is
           // per-attempt and exactly the right grain.
           body.verificationId ||
+          // The second-factor step carries only its challenge id.
+          body.challengeId ||
           "anonymous";
         return `${req.ip}:${req.path}:${identifier}`;
       },
@@ -68,4 +70,25 @@ const authLimiter: RequestHandler = !rateLimitingEnabled
       },
     });
 
-export { apiLimiter, authLimiter };
+// Signed-in sensitive actions (change password, 2FA, phone change). Keyed by the account, not the
+// IP and never by anything in the body, so it cannot be dodged by varying a field. Mount it
+// AFTER verifyToken.
+const accountLimiter: RequestHandler = !rateLimitingEnabled
+  ? passthrough
+  : rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 10,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => `${(req as { user?: { id?: string } }).user?.id ?? req.ip}:${req.path}`,
+      store: buildStore("rl:account:"),
+      passOnStoreError: true,
+      message: {
+        statusCode: 429,
+        result: null,
+        displayMessage: "Too many attempts. Try again later.",
+        status: false,
+      },
+    });
+
+export { apiLimiter, authLimiter, accountLimiter };

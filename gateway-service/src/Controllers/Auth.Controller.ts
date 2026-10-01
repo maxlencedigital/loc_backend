@@ -65,7 +65,7 @@ const register = async (req: Request, res: Response) => {
  *               password: { type: string }
  *     responses:
  *       200:
- *         description: "Login successful. Returns { token, user } where user is the dashboard User shape (id, name, email, phone, role, storeId, initials, status, lastActiveAt, joinedAt); role is the backend role. The token carries userId, role and storeId."
+ *         description: "Login successful. Returns { token, user } where user is the dashboard User shape (id, name, email, phone, role, storeId, initials, status, lastActiveAt, joinedAt); role is the backend role. The token carries userId, role and storeId. An account with two-factor on (admin, hr, manager) gets instead { twoFactorRequired: true, challengeId, challengeToken, expiresInSeconds } and no session: finish with POST /auth/2fa/verify. Accounts without two-factor, and super_admin, are unchanged."
  *       401:
  *         description: Invalid email or password.
  */

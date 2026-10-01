@@ -1,7 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { actorOf } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { parsePage } from "../../commons/Utils/Pagination.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { AnalyticsService } from "../Services/Analytics.Service.js";
 
 /**
  * @openapi
@@ -52,12 +55,11 @@ import { handleErrorResponse, handleNotImplementedResponse } from "../../commons
  *                               perOrder: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getOrderCost = async (_req: Request, res: Response) => {
+const getOrderCost = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await AnalyticsService.orderCost(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -109,12 +111,11 @@ const getOrderCost = async (_req: Request, res: Response) => {
  *                               value: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getResourceUsage = async (_req: Request, res: Response) => {
+const getResourceUsage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await AnalyticsService.resourceUsage(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -165,12 +166,11 @@ const getResourceUsage = async (_req: Request, res: Response) => {
  *                               marginPct: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getStoreEconomics = async (_req: Request, res: Response) => {
+const getStoreEconomics = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await AnalyticsService.storeEconomics(req.query as Record<string, unknown>, actorOf(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

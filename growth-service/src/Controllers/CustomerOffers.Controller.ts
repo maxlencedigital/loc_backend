@@ -1,8 +1,11 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { CouponService } from "../Services/Coupon.Service.js";
+import { LoyaltyService } from "../Services/Loyalty.Service.js";
+import { PackageService } from "../Services/Package.Service.js";
+import { actorId } from "./Actor.js";
 
 /**
  * @openapi
@@ -49,12 +52,11 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMyCoupons = async (_req: Request, res: Response) => {
+const listMyCoupons = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.listMine(actorId(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -98,15 +100,15 @@ const listMyCoupons = async (_req: Request, res: Response) => {
  *                         reason: { type: string }
  *       400:
  *         description: "Missing or invalid fields."
+ *       429:
+ *         description: "Too many coupon checks. Limited to 20 per 10 minutes per customer."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const validateMyCoupon = async (req: Request, res: Response) => {
+const validateMyCoupon = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["code"]);
-    return handleNotImplementedResponse(res);
+    const result = await CouponService.validateMine(actorId(req), req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -140,12 +142,11 @@ const validateMyCoupon = async (req: Request, res: Response) => {
  *                         pointsToNextTier: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMyLoyalty = async (_req: Request, res: Response) => {
+const getMyLoyalty = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.getMine(actorId(req));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -179,13 +180,11 @@ const getMyLoyalty = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       409:
  *         description: "Not enough points."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const redeemMyPoints = async (req: Request, res: Response) => {
+const redeemMyPoints = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["points"]);
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.redeemMine(actorId(req), req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -241,12 +240,11 @@ const redeemMyPoints = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMyLoyaltyTransactions = async (_req: Request, res: Response) => {
+const listMyLoyaltyTransactions = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await LoyaltyService.listMyTransactions(actorId(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -297,12 +295,11 @@ const listMyLoyaltyTransactions = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAvailablePackages = async (_req: Request, res: Response) => {
+const listAvailablePackages = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.listAvailable(req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -352,12 +349,11 @@ const listAvailablePackages = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMyPackages = async (_req: Request, res: Response) => {
+const listMyPackages = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.listOwned(actorId(req), req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -407,12 +403,11 @@ const listMyPackages = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const purchaseMyPackage = async (_req: Request, res: Response) => {
+const purchaseMyPackage = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const result = await PackageService.purchase(actorId(req), req.params.packageId, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

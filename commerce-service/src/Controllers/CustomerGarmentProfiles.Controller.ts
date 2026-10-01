@@ -1,8 +1,8 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { GarmentProfileService } from "../Services/GarmentProfile.Service.js";
 
 /**
  * @openapi
@@ -55,12 +55,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listGarmentProfiles = async (_req: Request, res: Response) => {
+const listGarmentProfiles = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await GarmentProfileService.list(user, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Garment profiles.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -121,13 +121,12 @@ const listGarmentProfiles = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createGarmentProfile = async (req: Request, res: Response) => {
+const createGarmentProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await GarmentProfileService.create(user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Garment profile saved.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -176,12 +175,12 @@ const createGarmentProfile = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getGarmentProfile = async (_req: Request, res: Response) => {
+const getGarmentProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await GarmentProfileService.get(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Garment profile.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -248,12 +247,12 @@ const getGarmentProfile = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateGarmentProfile = async (_req: Request, res: Response) => {
+const updateGarmentProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await GarmentProfileService.update(user, req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Garment profile updated.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -280,12 +279,12 @@ const updateGarmentProfile = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteGarmentProfile = async (_req: Request, res: Response) => {
+const deleteGarmentProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await GarmentProfileService.remove(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Garment profile deleted.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -333,12 +332,12 @@ const deleteGarmentProfile = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMyGarmentHistory = async (_req: Request, res: Response) => {
+const getMyGarmentHistory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await GarmentProfileService.history(user, req.params.id as string);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Garment history.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -350,7 +349,7 @@ const getMyGarmentHistory = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: uploadMyGarmentPhoto
  *     summary: "Attach a photo to a garment profile"
- *     description: "**Who can call this:** customer (super_admin always allowed)."
+ *     description: "**Who can call this:** customer (super_admin always allowed). There is no file storage yet, so this takes a JSON reference to an image already hosted over https (up to 5 per profile) instead of a multipart upload."
  *     tags: ["Customer - Garment Care Profiles"]
  *     x-roles: [customer]
  *     parameters:
@@ -359,13 +358,15 @@ const getMyGarmentHistory = async (_req: Request, res: Response) => {
  *         required: true
  *         schema: { type: string }
  *     requestBody:
- *       required: false
+ *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
+ *             required: [url]
  *             properties:
- *               photo: { type: string, format: binary }
+ *               url: { type: string, format: uri, description: "https link to the image" }
+ *               note: { type: string }
  *     responses:
  *       201:
  *         description: "Created."
@@ -375,12 +376,12 @@ const getMyGarmentHistory = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadMyGarmentPhoto = async (_req: Request, res: Response) => {
+const uploadMyGarmentPhoto = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await GarmentProfileService.addPhoto(user, req.params.id as string, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Photo added.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -1,8 +1,12 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { EmployeeService } from "../Services/Employee.Service.js";
+import { EmployeeDocumentService } from "../Services/EmployeeDocument.Service.js";
+import { OnboardingService } from "../Services/Onboarding.Service.js";
+import { HrSummaryService } from "../Services/HrSummary.Service.js";
 
 /**
  * @openapi
@@ -51,6 +55,7 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                             type: object
  *                             properties:
  *                               id: { type: string, format: uuid }
+ *                               code: { type: string, description: "e.g. EMP-00042" }
  *                               name: { type: string }
  *                               employeeType: { type: string, enum: [staff, rider, manager, hr, admin] }
  *                               phone: { type: string, description: "E.164 phone number, e.g. +919876543210" }
@@ -58,6 +63,7 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                               storeId: { type: string, format: uuid, description: "riders may be unassigned; staff belong to one store" }
  *                               role: { type: string }
  *                               designation: { type: string }
+ *                               payGrade: { type: string, description: "HR and admin only" }
  *                               joinDate: { type: string, format: date }
  *                               dateOfBirth: { type: string, format: date }
  *                               address: { type: string }
@@ -71,7 +77,7 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                                 type: object
  *                                 properties:
  *                                   holderName: { type: string }
- *                                   accountNumber: { type: string }
+ *                                   accountNumber: { type: string, description: "masked to the last four digits unless the caller is HR or admin" }
  *                                   ifsc: { type: string }
  *                               gatewayUserId: { type: string, format: uuid, description: "the login account, once one exists" }
  *                               reportingTo: { type: string, format: uuid }
@@ -83,12 +89,10 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listEmployees = async (_req: Request, res: Response) => {
+const listEmployees = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EmployeeService.list(resolveStoreScope(req), req.user as RequestUser, req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -118,6 +122,7 @@ const listEmployees = async (_req: Request, res: Response) => {
  *               storeId: { type: string, format: uuid, description: "riders may be unassigned; staff belong to one store" }
  *               role: { type: string }
  *               designation: { type: string }
+ *               payGrade: { type: string, description: "HR and admin only" }
  *               joinDate: { type: string, format: date }
  *               dateOfBirth: { type: string, format: date }
  *               address: { type: string }
@@ -131,7 +136,7 @@ const listEmployees = async (_req: Request, res: Response) => {
  *                 type: object
  *                 properties:
  *                   holderName: { type: string }
- *                   accountNumber: { type: string }
+ *                   accountNumber: { type: string, description: "masked to the last four digits unless the caller is HR or admin" }
  *                   ifsc: { type: string }
  *               gatewayUserId: { type: string, format: uuid, description: "the login account, once one exists" }
  *               reportingTo: { type: string, format: uuid }
@@ -150,6 +155,7 @@ const listEmployees = async (_req: Request, res: Response) => {
  *                       type: object
  *                       properties:
  *                         id: { type: string, format: uuid }
+ *                         code: { type: string, description: "e.g. EMP-00042" }
  *                         name: { type: string }
  *                         employeeType: { type: string, enum: [staff, rider, manager, hr, admin] }
  *                         phone: { type: string, description: "E.164 phone number, e.g. +919876543210" }
@@ -157,6 +163,7 @@ const listEmployees = async (_req: Request, res: Response) => {
  *                         storeId: { type: string, format: uuid, description: "riders may be unassigned; staff belong to one store" }
  *                         role: { type: string }
  *                         designation: { type: string }
+ *                         payGrade: { type: string, description: "HR and admin only" }
  *                         joinDate: { type: string, format: date }
  *                         dateOfBirth: { type: string, format: date }
  *                         address: { type: string }
@@ -170,7 +177,7 @@ const listEmployees = async (_req: Request, res: Response) => {
  *                           type: object
  *                           properties:
  *                             holderName: { type: string }
- *                             accountNumber: { type: string }
+ *                             accountNumber: { type: string, description: "masked to the last four digits unless the caller is HR or admin" }
  *                             ifsc: { type: string }
  *                         gatewayUserId: { type: string, format: uuid, description: "the login account, once one exists" }
  *                         reportingTo: { type: string, format: uuid }
@@ -179,15 +186,14 @@ const listEmployees = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "Phone or login account already belongs to another employee."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createEmployee = async (req: Request, res: Response) => {
+const createEmployee = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "employeeType", "phone", "role", "joinDate"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await EmployeeService.create(req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -221,6 +227,7 @@ const createEmployee = async (req: Request, res: Response) => {
  *                       type: object
  *                       properties:
  *                         id: { type: string, format: uuid }
+ *                         code: { type: string, description: "e.g. EMP-00042" }
  *                         name: { type: string }
  *                         employeeType: { type: string, enum: [staff, rider, manager, hr, admin] }
  *                         phone: { type: string, description: "E.164 phone number, e.g. +919876543210" }
@@ -228,6 +235,7 @@ const createEmployee = async (req: Request, res: Response) => {
  *                         storeId: { type: string, format: uuid, description: "riders may be unassigned; staff belong to one store" }
  *                         role: { type: string }
  *                         designation: { type: string }
+ *                         payGrade: { type: string, description: "HR and admin only" }
  *                         joinDate: { type: string, format: date }
  *                         dateOfBirth: { type: string, format: date }
  *                         address: { type: string }
@@ -241,7 +249,7 @@ const createEmployee = async (req: Request, res: Response) => {
  *                           type: object
  *                           properties:
  *                             holderName: { type: string }
- *                             accountNumber: { type: string }
+ *                             accountNumber: { type: string, description: "masked to the last four digits unless the caller is HR or admin" }
  *                             ifsc: { type: string }
  *                         gatewayUserId: { type: string, format: uuid, description: "the login account, once one exists" }
  *                         reportingTo: { type: string, format: uuid }
@@ -252,12 +260,10 @@ const createEmployee = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getEmployee = async (_req: Request, res: Response) => {
+const getEmployee = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EmployeeService.getById(req.params.id, resolveStoreScope(req), req.user as RequestUser) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -291,6 +297,7 @@ const getEmployee = async (_req: Request, res: Response) => {
  *               storeId: { type: string, format: uuid, description: "riders may be unassigned; staff belong to one store" }
  *               role: { type: string }
  *               designation: { type: string }
+ *               payGrade: { type: string, description: "HR and admin only" }
  *               joinDate: { type: string, format: date }
  *               dateOfBirth: { type: string, format: date }
  *               address: { type: string }
@@ -304,7 +311,7 @@ const getEmployee = async (_req: Request, res: Response) => {
  *                 type: object
  *                 properties:
  *                   holderName: { type: string }
- *                   accountNumber: { type: string }
+ *                   accountNumber: { type: string, description: "masked to the last four digits unless the caller is HR or admin" }
  *                   ifsc: { type: string }
  *               gatewayUserId: { type: string, format: uuid, description: "the login account, once one exists" }
  *               reportingTo: { type: string, format: uuid }
@@ -323,6 +330,7 @@ const getEmployee = async (_req: Request, res: Response) => {
  *                       type: object
  *                       properties:
  *                         id: { type: string, format: uuid }
+ *                         code: { type: string, description: "e.g. EMP-00042" }
  *                         name: { type: string }
  *                         employeeType: { type: string, enum: [staff, rider, manager, hr, admin] }
  *                         phone: { type: string, description: "E.164 phone number, e.g. +919876543210" }
@@ -330,6 +338,7 @@ const getEmployee = async (_req: Request, res: Response) => {
  *                         storeId: { type: string, format: uuid, description: "riders may be unassigned; staff belong to one store" }
  *                         role: { type: string }
  *                         designation: { type: string }
+ *                         payGrade: { type: string, description: "HR and admin only" }
  *                         joinDate: { type: string, format: date }
  *                         dateOfBirth: { type: string, format: date }
  *                         address: { type: string }
@@ -343,7 +352,7 @@ const getEmployee = async (_req: Request, res: Response) => {
  *                           type: object
  *                           properties:
  *                             holderName: { type: string }
- *                             accountNumber: { type: string }
+ *                             accountNumber: { type: string, description: "masked to the last four digits unless the caller is HR or admin" }
  *                             ifsc: { type: string }
  *                         gatewayUserId: { type: string, format: uuid, description: "the login account, once one exists" }
  *                         reportingTo: { type: string, format: uuid }
@@ -352,16 +361,16 @@ const getEmployee = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "Phone or login account already belongs to another employee."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateEmployee = async (_req: Request, res: Response) => {
+const updateEmployee = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EmployeeService.update(req.params.id, resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -373,7 +382,7 @@ const updateEmployee = async (_req: Request, res: Response) => {
  *   post:
  *     operationId: deactivateEmployee
  *     summary: "Record that someone has left"
- *     description: "**Who can call this:** admin, hr (super_admin always allowed). Also disables their login. The record is kept."
+ *     description: "**Who can call this:** admin, hr (super_admin always allowed). Also disables their login where the gateway allows it (loginDisabled in the answer says whether it did). The record is kept."
  *     tags: ["HR - Employees & Onboarding"]
  *     x-roles: [admin, hr]
  *     parameters:
@@ -396,17 +405,16 @@ const updateEmployee = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The employee has already left."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deactivateEmployee = async (req: Request, res: Response) => {
+const deactivateEmployee = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["lastWorkingDay"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EmployeeService.deactivate(req.params.id, resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -418,7 +426,7 @@ const deactivateEmployee = async (req: Request, res: Response) => {
  *   post:
  *     operationId: uploadEmployeeDocument
  *     summary: "Add an employee document"
- *     description: "**Who can call this:** admin, hr (super_admin always allowed). Multipart."
+ *     description: "**Who can call this:** admin, hr (super_admin always allowed). The service keeps a reference to the stored file (no bytes are uploaded here), so the body is JSON."
  *     tags: ["HR - Employees & Onboarding"]
  *     x-roles: [admin, hr]
  *     parameters:
@@ -429,13 +437,16 @@ const deactivateEmployee = async (req: Request, res: Response) => {
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [type, file]
+ *             required: [type, fileName, fileUrl]
  *             properties:
  *               type: { type: string, enum: [id_proof, address_proof, contract, certificate, medical, other] }
- *               file: { type: string, format: binary }
+ *               fileName: { type: string }
+ *               fileUrl: { type: string, format: uri, description: "https link to the file in object storage" }
+ *               mimeType: { type: string }
+ *               sizeBytes: { type: integer }
  *     responses:
  *       201:
  *         description: "Created."
@@ -445,12 +456,10 @@ const deactivateEmployee = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadEmployeeDocument = async (_req: Request, res: Response) => {
+const uploadEmployeeDocument = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await EmployeeDocumentService.add(req.params.id, resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -506,12 +515,10 @@ const uploadEmployeeDocument = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listEmployeeDocuments = async (_req: Request, res: Response) => {
+const listEmployeeDocuments = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EmployeeDocumentService.list(req.params.id, resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -542,12 +549,10 @@ const listEmployeeDocuments = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteEmployeeDocument = async (_req: Request, res: Response) => {
+const deleteEmployeeDocument = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EmployeeDocumentService.remove(req.params.id, req.params.docId, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -595,12 +600,10 @@ const deleteEmployeeDocument = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getEmployeeOnboarding = async (_req: Request, res: Response) => {
+const getEmployeeOnboarding = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OnboardingService.getForEmployee(req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -643,13 +646,10 @@ const getEmployeeOnboarding = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateOnboardingItem = async (req: Request, res: Response) => {
+const updateOnboardingItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["status"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OnboardingService.updateItem(req.params.id, req.params.itemId, resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -672,16 +672,16 @@ const updateOnboardingItem = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The employee has not left."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reactivateEmployee = async (_req: Request, res: Response) => {
+const reactivateEmployee = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EmployeeService.reactivate(req.params.id, resolveStoreScope(req), req.user as RequestUser) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -726,12 +726,10 @@ const reactivateEmployee = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getOnboardingTemplate = async (_req: Request, res: Response) => {
+const getOnboardingTemplate = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OnboardingService.getTemplate(req.params.role) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -776,13 +774,10 @@ const getOnboardingTemplate = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setOnboardingTemplate = async (req: Request, res: Response) => {
+const setOnboardingTemplate = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["items"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OnboardingService.setTemplate(req.params.role, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -821,14 +816,17 @@ const setOnboardingTemplate = async (req: Request, res: Response) => {
  *                         openGrievances: { type: integer }
  *                         overdueTraining: { type: integer }
  *                         pendingLeaveRequests: { type: integer }
+ *                         byType: { type: object, additionalProperties: { type: integer } }
+ *                         byStatus: { type: object, additionalProperties: { type: integer } }
+ *                         byStore: { type: object, additionalProperties: { type: integer }, description: "only when the view is not limited to one store" }
+ *                         exitsLast90Days: { type: integer }
+ *                         attritionRate90dPct: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getHrSummary = async (_req: Request, res: Response) => {
+const getHrSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await HrSummaryService.getSummary(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

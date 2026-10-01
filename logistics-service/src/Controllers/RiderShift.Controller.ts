@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { requestActor } from "../Middleware/StoreScope.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { RiderShiftService } from "../Services/RiderShift.Service.js";
 
 /**
  * @openapi
@@ -33,13 +34,14 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Your role is not allowed to call this.
  *       409:
  *         description: "Not eligible for jobs — for example, vehicle insurance has expired."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setRiderAvailability = async (req: Request, res: Response) => {
+const setRiderAvailability = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["available"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderShiftService.setAvailability(actor, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -69,17 +71,20 @@ const setRiderAvailability = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const postRiderLocation = async (req: Request, res: Response) => {
+const postRiderLocation = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["latitude", "longitude"]);
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderShiftService.postLocation(actor, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -117,12 +122,14 @@ const postRiderLocation = async (req: Request, res: Response) => {
  *                         homeStoreId: { type: string, format: uuid }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderProfile = async (_req: Request, res: Response) => {
+const getRiderProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderShiftService.profile(actor) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -161,16 +168,20 @@ const getRiderProfile = async (_req: Request, res: Response) => {
  *                         jobsCompleted: { type: integer }
  *                         distanceKm: { type: number }
  *                         earnings: { type: number, description: "Amount in INR" }
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const endRiderShift = async (_req: Request, res: Response) => {
+const endRiderShift = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderShiftService.endShift(actor, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -198,16 +209,20 @@ const endRiderShift = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const startRiderShift = async (_req: Request, res: Response) => {
+const startRiderShift = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderShiftService.startShift(actor, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -245,12 +260,14 @@ const startRiderShift = async (_req: Request, res: Response) => {
  *                         hoursOnShift: { type: number }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderShiftSummary = async (_req: Request, res: Response) => {
+const getRiderShiftSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const actor = requestActor(req);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderShiftService.summary(actor, req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }

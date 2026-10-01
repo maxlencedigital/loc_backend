@@ -1,0 +1,347 @@
+// Vendors, purchasing and insurance (work package P07).
+//
+// Money is integer paise (INR only). Quantities are integer thousandths of a unit.
+// Calendar dates that drive logic (contract and policy start/end, expected delivery,
+// incident date) are DATE columns, read in India Standard Time; moments are Timestamptz.
+// Ids of rows owned by other modules (stores, employees, riders, incidents, orders) are
+// plain uuid columns with no foreign key.
+
+enum OpsVendorCategory {
+  detergent
+  packaging
+  machinery
+  spares
+  it
+  services
+  other
+}
+
+enum OpsMaterialCategory {
+  detergent
+  softener
+  packaging
+  hangers
+  chemicals
+  other
+}
+
+enum OpsPurchaseOrderStatus {
+  draft
+  sent
+  partially_received
+  received
+  cancelled
+}
+
+enum OpsPolicyType {
+  property
+  equipment
+  public_liability
+  rider_vehicle
+  staff_medical
+  staff_accident
+  other
+}
+
+enum OpsClaimStatus {
+  raised
+  submitted
+  under_review
+  settled
+  rejected
+}
+
+enum OpsClaimOutcome {
+  paid
+  partially_paid
+  rejected
+}
+
+model OpsVendor {
+  id                 String            @id @default(uuid()) @db.Uuid
+  name               String
+  category           OpsVendorCategory @default(other)
+  contactName        String?
+  phone              String?
+  email              String?
+  address            String?
+  // Business rule: one vendor per tax id (NULLs never collide).
+  gstin              String?           @unique
+  paymentTerms       String?
+  // Only the last four digits of the account are kept; the full number is never stored.
+  bankAccountLast4   String?
+  bankIfsc           String?
+  isActive           Boolean           @default(true)
+  deactivatedAt      DateTime?         @db.Timestamptz(6)
+  deactivationReason String?
+  deactivatedBy      String?
+  createdBy          String?
+  createdAt          DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(6)
+
+  agreements     OpsVendorAgreement[]
+  purchaseOrders OpsPurchaseOrder[]
+  materials      OpsMaterial[]
+
+  @@index([isActive, name], map: "idx_ops_vendor_active_name")
+  @@index([category, name], map: "idx_ops_vendor_category_name")
+  @@map("commerce_vendors")
+}
+
+model OpsVendorAgreement {
+  id        String    @id @default(uuid()) @db.Uuid
+  vendorId  String    @db.Uuid
+  title     String
+  startDate DateTime  @db.Date
+  endDate   DateTime? @db.Date
+  terms     String?
+  // [{ url, name, contentType, sizeBytes, attachedAt, attachedBy }], at most 10.
+  documents Json      @default("[]")
+  createdBy String?
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+
+  vendor OpsVendor @relation(fields: [vendorId], references: [id])
+
+  @@index([vendorId, startDate(sort: Desc)], map: "idx_ops_agreement_vendor_start")
+  @@map("commerce_vendor_agreements")
+}
+
+model OpsMaterial {
+  id                String              @id @default(uuid()) @db.Uuid
+  name              String              @unique
+  category          OpsMaterialCategory @default(other)
+  unit              String
+  reorderLevelMilli Int                 @default(0)
+  preferredVendorId String?             @db.Uuid
+  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(6)
+
+  preferredVendor OpsVendor?             @relation(fields: [preferredVendorId], references: [id])
+  stock           OpsMaterialStock[]
+  orderItems      OpsPurchaseOrderItem[]
+
+  @@index([category, name], map: "idx_ops_material_category_name")
+  @@index([preferredVendorId], map: "idx_ops_material_vendor")
+  @@map("commerce_materials")
+}
+
+// What a store holds of a material, raised when a purchase order delivery is recorded.
+// A missing row means none on hand.
+model OpsMaterialStock {
+  materialId    String      @db.Uuid
+  storeId       String      @db.Uuid
+  quantityMilli Int         @default(0)
+  updatedAt     DateTime    @updatedAt @db.Timestamptz(6)
+
+  material OpsMaterial @relation(fields: [materialId], references: [id])
+
+  @@id([materialId, storeId])
+  @@index([storeId], map: "idx_ops_stock_store")
+  @@map("commerce_material_stock")
+}
+
+model OpsPurchaseOrder {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  // Human-readable number, e.g. PO-1001, from commerce_sequence_counters.
+  number             String                 @unique
+  vendorId           String                 @db.Uuid
+  storeId            String                 @db.Uuid
+  status             OpsPurchaseOrderStatus @default(draft)
+  totalPaise         Int                    @default(0)
+  // Value of what has arrived so far, so the outstanding amount is a SQL sum.
+  receivedValuePaise Int                    @default(0)
+  expectedOn         DateTime?              @db.Date
+  notes              String?
+  sentAt             DateTime?              @db.Timestamptz(6)
+  receivedAt         DateTime?              @db.Timestamptz(6)
+  // Set once, when the last item arrives: arrived on or before expectedOn. NULL if no date.
+  deliveredOnTime    Boolean?
+  cancelledAt        DateTime?              @db.Timestamptz(6)
+  cancelReason       String?
+  createdBy          String
+  idempotencyKey     String?
+  createdAt          DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(6)
+
+  vendor   OpsVendor                  @relation(fields: [vendorId], references: [id])
+  items    OpsPurchaseOrderItem[]
+  events   OpsPurchaseOrderEvent[]
+  receipts OpsPurchaseOrderReceipt[]
+
+  @@unique([createdBy, idempotencyKey], map: "uq_ops_po_idempotency")
+  @@index([storeId, status, createdAt(sort: Desc)], map: "idx_ops_po_store_status_created")
+  @@index([vendorId, createdAt(sort: Desc)], map: "idx_ops_po_vendor_created")
+  @@index([status, createdAt(sort: Desc)], map: "idx_ops_po_status_created")
+  @@index([createdAt(sort: Desc)], map: "idx_ops_po_created")
+  @@index([vendorId, sentAt], map: "idx_ops_po_vendor_sent")
+  @@index([sentAt], map: "idx_ops_po_sent")
+  @@map("commerce_purchase_orders")
+}
+
+model OpsPurchaseOrderItem {
+  id                 String   @id @default(uuid()) @db.Uuid
+  purchaseOrderId    String   @db.Uuid
+  materialId         String   @db.Uuid
+  // Copied from the purchase order so on-order quantities group by store without a join.
+  storeId            String   @db.Uuid
+  position           Int
+  // Snapshot: a later rename must not rewrite a past order.
+  materialName       String
+  unit               String
+  quantityMilli      Int
+  receivedMilli      Int      @default(0)
+  // NULL while the price is unknown; every line needs one before the order is sent.
+  unitPricePaise     Int?
+  amountPaise        Int      @default(0)
+
+  purchaseOrder OpsPurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  material      OpsMaterial      @relation(fields: [materialId], references: [id])
+
+  @@unique([purchaseOrderId, materialId], map: "uq_ops_po_item_material")
+  @@index([purchaseOrderId, position], map: "idx_ops_po_item_order")
+  @@index([storeId, materialId], map: "idx_ops_po_item_store_material")
+  @@index([materialId], map: "idx_ops_po_item_material")
+  @@map("commerce_purchase_order_items")
+}
+
+// Append-only: one row per status change, written in the same transaction as the change.
+model OpsPurchaseOrderEvent {
+  id              String                  @id @default(uuid()) @db.Uuid
+  purchaseOrderId String                  @db.Uuid
+  fromStatus      OpsPurchaseOrderStatus?
+  toStatus        OpsPurchaseOrderStatus
+  note            String?
+  byUserId        String
+  byName          String
+  at              DateTime                @default(now()) @db.Timestamptz(6)
+
+  purchaseOrder OpsPurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId, at], map: "idx_ops_po_event_order_at")
+  @@map("commerce_purchase_order_events")
+}
+
+model OpsPurchaseOrderReceipt {
+  id              String   @id @default(uuid()) @db.Uuid
+  purchaseOrderId String   @db.Uuid
+  invoiceRef      String?
+  note            String?
+  // [{ materialId, quantityMilli }]
+  lines           Json
+  byUserId        String
+  byName          String
+  receivedAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  purchaseOrder OpsPurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId, receivedAt], map: "idx_ops_po_receipt_order_at")
+  @@map("commerce_purchase_order_receipts")
+}
+
+model OpsInsurancePolicy {
+  id               String        @id @default(uuid()) @db.Uuid
+  type             OpsPolicyType
+  insurer          String
+  // Lower-cased insurer, so the unique key below ignores capitalisation.
+  insurerKey       String
+  policyNumber     String
+  coverageAmountPaise BigInt?
+  premiumPaise     BigInt?
+  startDate        DateTime      @db.Date
+  endDate          DateTime      @db.Date
+  covers           String?
+  storeIds         String[]      @db.Uuid
+  employeeIds      String[]      @db.Uuid
+  // Expiring and expired are worked out from endDate; only cancellation is stored.
+  cancelledAt      DateTime?     @db.Timestamptz(6)
+  cancelReason     String?
+  // [{ url, name, contentType, sizeBytes, attachedAt, attachedBy }], at most 10.
+  documents        Json          @default("[]")
+  createdBy        String?
+  createdAt        DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(6)
+
+  renewals OpsPolicyRenewal[]
+  claims   OpsInsuranceClaim[]
+
+  @@unique([insurerKey, policyNumber], map: "uq_ops_policy_insurer_number")
+  @@index([cancelledAt, endDate], map: "idx_ops_policy_cancelled_end")
+  @@index([type, endDate], map: "idx_ops_policy_type_end")
+  @@index([storeIds], map: "idx_ops_policy_stores", type: Gin)
+  @@index([employeeIds], map: "idx_ops_policy_employees", type: Gin)
+  @@map("commerce_insurance_policies")
+}
+
+model OpsPolicyRenewal {
+  id                  String    @id @default(uuid()) @db.Uuid
+  policyId            String    @db.Uuid
+  previousEndDate     DateTime  @db.Date
+  newEndDate          DateTime  @db.Date
+  previousPolicyNumber String
+  newPolicyNumber     String
+  previousPremiumPaise BigInt?
+  newPremiumPaise     BigInt?
+  byUserId            String
+  byName              String
+  at                  DateTime  @default(now()) @db.Timestamptz(6)
+
+  policy OpsInsurancePolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@index([policyId, at], map: "idx_ops_renewal_policy_at")
+  @@map("commerce_insurance_policy_renewals")
+}
+
+model OpsInsuranceClaim {
+  id               String           @id @default(uuid()) @db.Uuid
+  // Human-readable number, e.g. CLM-1001, from commerce_sequence_counters.
+  number           String           @unique
+  policyId         String           @db.Uuid
+  type             String
+  description      String
+  incidentDate     DateTime         @db.Date
+  claimAmountPaise BigInt
+  incidentId       String?          @db.Uuid
+  storeId          String?          @db.Uuid
+  employeeId       String?          @db.Uuid
+  orderId          String?          @db.Uuid
+  status           OpsClaimStatus   @default(raised)
+  insurerReference String?
+  outcome          OpsClaimOutcome?
+  settledAmountPaise BigInt?
+  settledAt        DateTime?        @db.Timestamptz(6)
+  // Seconds from raising to the insurer's decision, so the average is a SQL aggregate.
+  decisionSeconds  Int?
+  // [{ url, name, caption, contentType, sizeBytes, attachedAt, attachedBy }], at most 20.
+  documents        Json             @default("[]")
+  raisedAt         DateTime         @default(now()) @db.Timestamptz(6)
+  createdBy        String
+  idempotencyKey   String?
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(6)
+
+  policy OpsInsurancePolicy   @relation(fields: [policyId], references: [id])
+  events OpsClaimEvent[]
+
+  @@unique([createdBy, idempotencyKey], map: "uq_ops_claim_idempotency")
+  @@index([raisedAt(sort: Desc)], map: "idx_ops_claim_raised")
+  @@index([status, raisedAt(sort: Desc)], map: "idx_ops_claim_status_raised")
+  @@index([policyId, raisedAt(sort: Desc)], map: "idx_ops_claim_policy_raised")
+  @@map("commerce_insurance_claims")
+}
+
+// Append-only: one row per status or reference change, in the same transaction.
+model OpsClaimEvent {
+  id         String          @id @default(uuid()) @db.Uuid
+  claimId    String          @db.Uuid
+  fromStatus OpsClaimStatus?
+  toStatus   OpsClaimStatus
+  note       String?
+  byUserId   String
+  byName     String
+  at         DateTime        @default(now()) @db.Timestamptz(6)
+
+  claim OpsInsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId, at], map: "idx_ops_claim_event_claim_at")
+  @@map("commerce_insurance_claim_events")
+}

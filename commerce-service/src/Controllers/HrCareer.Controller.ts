@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { CareerService } from "../Services/Career.Service.js";
 
 /**
  * @openapi
@@ -13,6 +14,13 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *     description: "**Who can call this:** admin, hr (super_admin always allowed)."
  *     tags: ["HR - Career Development"]
  *     x-roles: [admin, hr]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, description: "1-based page number" }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, description: "page size, max 100" }
  *     responses:
  *       200:
  *         description: "OK."
@@ -34,14 +42,15 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                               role: { type: string }
  *                               nextRoles: { type: array, items: { type: string } }
  *                               requirements: { type: array, items: { type: string } }
+ *                         page: { type: integer }
+ *                         limit: { type: integer }
+ *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listCareerPaths = async (_req: Request, res: Response) => {
+const listCareerPaths = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CareerService.listPaths(req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -80,13 +89,10 @@ const listCareerPaths = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setCareerPath = async (req: Request, res: Response) => {
+const setCareerPath = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["nextRoles"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CareerService.setPath(req.params.role, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -138,16 +144,28 @@ const setCareerPath = async (req: Request, res: Response) => {
  *                               owner: { type: string }
  *                               dueDate: { type: string, format: date }
  *                         lastReviewedAt: { type: string, format: date-time }
+ *                         employeeId: { type: string, format: uuid }
+ *                         history:
+ *                           type: array
+ *                           description: "append-only changes of designation, store, pay grade and status, latest first"
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               field: { type: string }
+ *                               from: { type: string, nullable: true }
+ *                               to: { type: string, nullable: true }
+ *                               effectiveDate: { type: string, format: date }
+ *                               reason: { type: string, nullable: true }
+ *                               changedBy: { type: string }
+ *                               at: { type: string, format: date-time }
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCareerPlan = async (_req: Request, res: Response) => {
+const getCareerPlan = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CareerService.getPlan(req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -203,12 +221,10 @@ const getCareerPlan = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setCareerPlan = async (_req: Request, res: Response) => {
+const setCareerPlan = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CareerService.setPlan(req.params.id, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -246,13 +262,10 @@ const setCareerPlan = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reviewCareerPlan = async (req: Request, res: Response) => {
+const reviewCareerPlan = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["note"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await CareerService.reviewPlan(req.params.id, resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

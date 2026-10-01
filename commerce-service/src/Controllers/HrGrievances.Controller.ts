@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { GrievanceService } from "../Services/Grievance.Service.js";
+import { HrRequestService } from "../Services/HrRequest.Service.js";
 
 /**
  * @openapi
@@ -64,12 +66,10 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listGrievances = async (_req: Request, res: Response) => {
+const listGrievances = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await GrievanceService.list(req.user as RequestUser, resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -96,12 +96,10 @@ const listGrievances = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getGrievance = async (_req: Request, res: Response) => {
+const getGrievance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await GrievanceService.get(req.user as RequestUser, resolveStoreScope(req), req.params.id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -135,17 +133,16 @@ const getGrievance = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The grievance is closed, or the assignee is the person it concerns."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const assignGrievance = async (req: Request, res: Response) => {
+const assignGrievance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["assigneeId"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await GrievanceService.assign(req.user as RequestUser, resolveStoreScope(req), req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -179,17 +176,16 @@ const assignGrievance = async (req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The grievance is already closed."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const closeGrievance = async (req: Request, res: Response) => {
+const closeGrievance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["outcome"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await GrievanceService.close(req.user as RequestUser, resolveStoreScope(req), req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -224,17 +220,16 @@ const closeGrievance = async (req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The grievance is closed."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const commentOnGrievance = async (req: Request, res: Response) => {
+const commentOnGrievance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["message"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await GrievanceService.comment(req.user as RequestUser, resolveStoreScope(req), req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -268,17 +263,16 @@ const commentOnGrievance = async (req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The grievance is already escalated or closed."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const escalateGrievance = async (req: Request, res: Response) => {
+const escalateGrievance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["reason"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await GrievanceService.escalate(req.user as RequestUser, resolveStoreScope(req), req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -334,12 +328,10 @@ const escalateGrievance = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listHrRequests = async (_req: Request, res: Response) => {
+const listHrRequests = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await HrRequestService.list(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -366,12 +358,10 @@ const listHrRequests = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getHrRequest = async (_req: Request, res: Response) => {
+const getHrRequest = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await HrRequestService.get(resolveStoreScope(req), req.params.id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -404,16 +394,16 @@ const getHrRequest = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The request is already closed."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const closeHrRequest = async (_req: Request, res: Response) => {
+const closeHrRequest = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await HrRequestService.close(resolveStoreScope(req), req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -447,17 +437,16 @@ const closeHrRequest = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The request was already answered or closed."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const respondToHrRequest = async (req: Request, res: Response) => {
+const respondToHrRequest = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["message"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await HrRequestService.respond(req.user as RequestUser, resolveStoreScope(req), req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

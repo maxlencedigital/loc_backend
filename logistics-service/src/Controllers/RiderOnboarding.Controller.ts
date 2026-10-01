@@ -1,8 +1,7 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
 import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { RiderOnboardingService } from "../Services/RiderOnboarding.Service.js";
 
 /**
  * @openapi
@@ -38,12 +37,13 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         status: { type: string, enum: [submitted, documents_requested, under_review, approved, rejected] }
  *                         message: { type: string }
  *                         missingDocuments: { type: array, items: { type: string } }
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderApplicationStatus = async (_req: Request, res: Response) => {
+const getRiderApplicationStatus = async (req: Request, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: successCode, result: await RiderOnboardingService.status(req.query) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -92,15 +92,17 @@ const getRiderApplicationStatus = async (_req: Request, res: Response) => {
  *                         applicationId: { type: string, format: uuid }
  *                         uploadToken: { type: string, description: "needed to upload documents" }
  *                         status: { type: string, enum: [submitted, documents_requested, under_review, approved, rejected] }
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
 const submitRiderApplication = async (req: Request, res: Response) => {
   try {
-    requireFields(req.body, ["name", "phone", "city", "vehicleType", "vehicleNumber", "drivingLicenceNumber", "idType", "idNumber"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: created, result: await RiderOnboardingService.submit(req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -112,7 +114,7 @@ const submitRiderApplication = async (req: Request, res: Response) => {
  *   post:
  *     operationId: uploadRiderApplicationDocument
  *     summary: "Upload a document for an application"
- *     description: "**Public** — no token required. Multipart."
+ *     description: "**Public** — no token required. Send JSON with an https link to the already-uploaded file; logistics has no file storage of its own."
  *     tags: ["Rider - Onboarding"]
  *     security: []
  *     parameters:
@@ -123,27 +125,30 @@ const submitRiderApplication = async (req: Request, res: Response) => {
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [uploadToken, type, file]
+ *             required: [uploadToken, type, fileUrl]
  *             properties:
  *               uploadToken: { type: string }
  *               type: { type: string, enum: [id_proof, licence, vehicle_rc, insurance, photo] }
- *               file: { type: string, format: binary }
+ *               fileUrl: { type: string, format: uri, description: "https link to the uploaded file" }
  *     responses:
  *       201:
  *         description: "Created."
+ *       409:
+ *         description: "The request conflicts with the current state."
  *       400:
  *         description: "Missing or invalid fields."
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadRiderApplicationDocument = async (_req: Request, res: Response) => {
+const uploadRiderApplicationDocument = async (req: Request, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse(
+      { statusCode: created, result: await RiderOnboardingService.uploadDocument(req.params.id as string, req.body) },
+      res
+    );
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -68,6 +68,22 @@ const revokeAllForUser = async (userId: string, reason: RevokeReason): Promise<v
   }
 };
 
+// Ends every sign-in of the user except one chain: how a password change keeps the caller signed in.
+const revokeAllForUserExceptFamily = async (
+  userId: string,
+  keepFamilyId: string,
+  reason: RevokeReason
+): Promise<void> => {
+  try {
+    await prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null, familyId: { not: keepFamilyId } },
+      data: { revokedAt: new Date(), revokedReason: reason },
+    });
+  } catch (error) {
+    throw error;
+  }
+};
+
 // Rows are kept a day past expiry so a late replay of a dead token is still recognised.
 const purgeExpired = async (olderThan: Date): Promise<number> => {
   try {
@@ -85,5 +101,6 @@ export const RefreshTokenQuery = {
   claimForRotation,
   revokeFamily,
   revokeAllForUser,
+  revokeAllForUserExceptFamily,
   purgeExpired,
 };

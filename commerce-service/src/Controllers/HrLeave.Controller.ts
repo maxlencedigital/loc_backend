@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { HolidayService } from "../Services/Holiday.Service.js";
+import { LeaveService } from "../Services/Leave.Service.js";
 
 /**
  * @openapi
@@ -54,12 +56,10 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listHolidays = async (_req: Request, res: Response) => {
+const listHolidays = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await HolidayService.list(req.user as RequestUser, req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -91,15 +91,14 @@ const listHolidays = async (_req: Request, res: Response) => {
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "That holiday is already on the calendar."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createHoliday = async (req: Request, res: Response) => {
+const createHoliday = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["date", "name"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await HolidayService.create(req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -126,12 +125,10 @@ const createHoliday = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deleteHoliday = async (_req: Request, res: Response) => {
+const deleteHoliday = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await HolidayService.remove(req.params.id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -153,6 +150,12 @@ const deleteHoliday = async (_req: Request, res: Response) => {
  *       - in: query
  *         name: storeId
  *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, description: "1-based page number" }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, description: "page size, max 100" }
  *     responses:
  *       200:
  *         description: "OK."
@@ -177,14 +180,17 @@ const deleteHoliday = async (_req: Request, res: Response) => {
  *                               entitled: { type: number }
  *                               taken: { type: number }
  *                               remaining: { type: number }
+ *                         year: { type: integer }
+ *                         utilisationPct: { type: number }
+ *                         page: { type: integer }
+ *                         limit: { type: integer }
+ *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listLeaveBalances = async (_req: Request, res: Response) => {
+const listLeaveBalances = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.listBalances(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -207,6 +213,12 @@ const listLeaveBalances = async (_req: Request, res: Response) => {
  *       - in: query
  *         name: storeId
  *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, description: "1-based page number" }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, description: "page size, max 100" }
  *     responses:
  *       200:
  *         description: "OK."
@@ -230,14 +242,16 @@ const listLeaveBalances = async (_req: Request, res: Response) => {
  *                               from: { type: string, format: date }
  *                               to: { type: string, format: date }
  *                               type: { type: string, enum: [casual, sick, earned, unpaid, other] }
+ *                         month: { type: string, description: "YYYY-MM" }
+ *                         page: { type: integer }
+ *                         limit: { type: integer }
+ *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getLeaveCalendar = async (_req: Request, res: Response) => {
+const getLeaveCalendar = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.calendar(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -275,12 +289,10 @@ const getLeaveCalendar = async (_req: Request, res: Response) => {
  *                               carryForward: { type: boolean }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getLeavePolicies = async (_req: Request, res: Response) => {
+const getLeavePolicies = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.getPolicies() }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -319,13 +331,10 @@ const getLeavePolicies = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setLeavePolicies = async (req: Request, res: Response) => {
+const setLeavePolicies = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["policies"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.setPolicies(req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -396,12 +405,10 @@ const setLeavePolicies = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listLeaveRequests = async (_req: Request, res: Response) => {
+const listLeaveRequests = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.list(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -432,12 +439,10 @@ const listLeaveRequests = async (_req: Request, res: Response) => {
  *                         pending: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const countPendingLeaveRequests = async (_req: Request, res: Response) => {
+const countPendingLeaveRequests = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.countPending(resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -485,12 +490,10 @@ const countPendingLeaveRequests = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getLeaveRequest = async (_req: Request, res: Response) => {
+const getLeaveRequest = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.getById(req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -523,16 +526,16 @@ const getLeaveRequest = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "Already decided, or not enough balance left."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const approveLeaveRequest = async (_req: Request, res: Response) => {
+const approveLeaveRequest = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.approve(req.params.id, resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -566,17 +569,16 @@ const approveLeaveRequest = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "Already decided."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const rejectLeaveRequest = async (req: Request, res: Response) => {
+const rejectLeaveRequest = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["reason"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await LeaveService.reject(req.params.id, resolveStoreScope(req), req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

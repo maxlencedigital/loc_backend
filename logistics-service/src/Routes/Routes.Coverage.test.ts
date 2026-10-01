@@ -34,6 +34,9 @@ const collect = (stack: any[]): RouteInfo[] => {
 
 const routes = collect((router as any).stack).filter((r) => r.path !== "/health");
 const isPublic = (path: string) => path.startsWith("/public/");
+// Service-to-service routes: refuse anyone without a service name, and are not for any user role.
+const isInternal = (path: string) => path.startsWith("/internal/");
+const userRoutes = routes.filter((x) => !isPublic(x.path) && !isInternal(x.path));
 const concrete = (path: string) => path.replace(/:\w+/g, "x");
 
 let server: http.Server;
@@ -87,7 +90,7 @@ describe("every route is guarded", () => {
   it("admits at least one real role on every non-public route (no typo locks everyone out)", async () => {
     const roles = ["admin", "manager", "hr", "staff", "driver", "customer"];
     const unreachable: string[] = [];
-    for (const r of routes.filter((x) => !isPublic(x.path))) {
+    for (const r of userRoutes) {
       let reached = false;
       for (const role of roles) {
         const status = await call(r.method, r.path, { "x-user-id": "u1", "x-user-role": role });
@@ -101,9 +104,22 @@ describe("every route is guarded", () => {
     expect(unreachable).toEqual([]);
   });
 
+  it("internal routes need a service name: no identity and a plain user role are both refused, a service is let in", async () => {
+    const wrong: string[] = [];
+    for (const r of routes.filter((x) => isInternal(x.path))) {
+      const anonymous = await call(r.method, r.path);
+      const asUser = await call(r.method, r.path, { "x-user-id": "u1", "x-user-role": "admin" });
+      const asService = await call(r.method, r.path, { "x-service-name": "gateway" });
+      if (anonymous !== 401 || asUser !== 401 || [401, 403, 404].includes(asService)) {
+        wrong.push(`${r.method} ${r.path} -> ${anonymous}/${asUser}/${asService}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
   it("refuses an unknown role on every non-public route", async () => {
     const admitted: string[] = [];
-    for (const r of routes.filter((x) => !isPublic(x.path))) {
+    for (const r of userRoutes) {
       const status = await call(r.method, r.path, { "x-user-id": "u1", "x-user-role": "not_a_real_role" });
       if (status !== 403) admitted.push(`${r.method} ${r.path} -> ${status}`);
     }

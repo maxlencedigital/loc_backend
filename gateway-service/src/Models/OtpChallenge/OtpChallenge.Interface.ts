@@ -1,4 +1,4 @@
-export type OtpPurpose = "register" | "login" | "password_reset";
+export type OtpPurpose = "register" | "login" | "password_reset" | "phone_change";
 
 export interface IOtpChallenge {
   /** Handed to the client as `verificationId`. Opaque; not the OTP. */

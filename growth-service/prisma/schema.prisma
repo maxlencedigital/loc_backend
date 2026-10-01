@@ -1,13 +1,9 @@
-// Growth service data model — offers, referrals, campaigns and loyalty.
+// Growth service data model: coupons, prepaid packages, loyalty, notifications and campaigns.
 //
-// No models yet: the routes exist as documented contracts returning 501 while
-// the service logic is built out module by module (see
-// src/Routes/Growth.Routes.ts). Models land here as each module is
-// implemented, one migration at a time.
-//
-// These tables live in their own Postgres schema (DB_SCHEMA=growth). That
-// is what keeps "no service reads another's tables" real rather than a
-// convention, given the five services share one free-tier database.
+// These tables live in their own Postgres schema (DB_SCHEMA=growth), which keeps "no service
+// reads another's tables" real on the one shared free-tier database. Other services' rows
+// (customers, orders, stores) are plain uuid columns with no foreign key: ask the owning
+// service over HTTP when the data is needed. Money is integer paise throughout.
 
 generator client {
   provider = "prisma-client-js"
@@ -17,6 +13,404 @@ datasource db {
   provider = "postgresql"
   // No url here on purpose: Prisma 7 moved connection strings out of the
   // schema. The CLI reads its URL from prisma.config.ts, and the running
-  // server passes its own through a driver adapter — see
+  // server passes its own through a driver adapter, see
   // src/DB/Prisma.Connection.Db.ts.
+}
+
+enum CouponType {
+  percent
+  flat
+  free_delivery
+}
+
+enum CustomerPackageStatus {
+  pending
+  active
+  exhausted
+  expired
+}
+
+enum LoyaltyTransactionType {
+  earn
+  redeem
+  expire
+  adjust
+}
+
+enum NotificationChannel {
+  sms
+  email
+  whatsapp
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+}
+
+enum CampaignStatus {
+  draft
+  scheduled
+  sending
+  sent
+  cancelled
+}
+
+enum CampaignRecipientStatus {
+  pending
+  sending
+  delivered
+  failed
+  skipped
+}
+
+// ---------------------------------------------------------------- coupons
+
+model Coupon {
+  id               String     @id @default(uuid()) @db.Uuid
+  // Stored upper-case, so the plain unique index is the case-insensitive uniqueness rule.
+  code             String     @unique
+  title            String
+  type             CouponType
+  // percent: 1..100, flat: paise, free_delivery: 0.
+  value            Int
+  minOrderPaise    Int        @default(0)
+  maxDiscountPaise Int?
+  validFrom        DateTime   @db.Timestamptz(6)
+  validUntil       DateTime   @db.Timestamptz(6)
+  usageLimit       Int?
+  perCustomerLimit Int?
+  usedCount        Int        @default(0)
+  // Empty means every store.
+  storeIds         String[]   @db.Uuid
+  firstOrderOnly   Boolean    @default(false)
+  isActive         Boolean    @default(true)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(6)
+
+  redemptions   CouponRedemption[]
+  customerUsage CouponCustomerUsage[]
+
+  @@index([isActive, validUntil], map: "idx_coupon_active_until")
+  @@index([createdAt], map: "idx_coupon_created")
+  @@map("growth_coupons")
+}
+
+model CouponRedemption {
+  id              String   @id @default(uuid()) @db.Uuid
+  couponId        String   @db.Uuid
+  customerId      String   @db.Uuid
+  orderRef        String
+  orderValuePaise Int
+  discountPaise   Int
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+
+  // One redemption per order per coupon: a retried redeem finds the first one.
+  @@unique([couponId, orderRef], map: "uq_redemption_coupon_order")
+  @@index([couponId, customerId], map: "idx_redemption_coupon_customer")
+  @@index([customerId, createdAt], map: "idx_redemption_customer_created")
+  @@map("growth_coupon_redemptions")
+}
+
+// Per-customer use counter: the atomic conditional increment that enforces perCustomerLimit,
+// and an indexed count of distinct customers for the usage report.
+model CouponCustomerUsage {
+  id         String   @id @default(uuid()) @db.Uuid
+  couponId   String   @db.Uuid
+  customerId String   @db.Uuid
+  usedCount  Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+
+  @@unique([couponId, customerId], map: "uq_coupon_usage_customer")
+  @@index([customerId], map: "idx_coupon_usage_customer")
+  @@map("growth_coupon_customer_usage")
+}
+
+// --------------------------------------------------------------- packages
+
+model PrepaidPackage {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  pricePaise   Int
+  creditPaise  Int
+  validityDays Int
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  customerPackages CustomerPackage[]
+
+  @@index([isActive, createdAt], map: "idx_package_active_created")
+  @@map("growth_prepaid_packages")
+}
+
+model CustomerPackage {
+  id                   String                @id @default(uuid()) @db.Uuid
+  customerId           String                @db.Uuid
+  packageId            String                @db.Uuid
+  // Snapshot of the package at purchase time: later edits never change what was sold.
+  packageName          String
+  pricePaise           Int
+  creditPaise          Int
+  validityDays         Int
+  remainingCreditPaise Int
+  status               CustomerPackageStatus @default(pending)
+  // The finance order reference this purchase is paid against (idempotency key for activation).
+  orderRef             String                @unique
+  expiresAt            DateTime?             @db.Timestamptz(6)
+  activatedAt          DateTime?             @db.Timestamptz(6)
+  createdAt            DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(6)
+
+  package PrepaidPackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
+
+  @@index([customerId, status, createdAt], map: "idx_custpkg_customer_status")
+  @@index([packageId, status, createdAt], map: "idx_custpkg_package_status")
+  @@index([status, createdAt], map: "idx_custpkg_status_created")
+  @@map("growth_customer_packages")
+}
+
+// ---------------------------------------------------------------- loyalty
+
+// One row (the `singleton` unique flag): the programme rules.
+model LoyaltyProgram {
+  id                   String   @id @default(uuid()) @db.Uuid
+  singleton            Boolean  @unique @default(true)
+  // Points per rupee in thousandths (1000 = 1 point per rupee), so no float is stored.
+  pointsPerRupeeMilli  Int
+  // What one point is worth when spent, in paise.
+  redemptionValuePaise Int
+  expiryDays           Int?
+  createdAt            DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("growth_loyalty_programs")
+}
+
+model LoyaltyTier {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  minPoints Int      @unique
+  benefits  String[]
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("growth_loyalty_tiers")
+}
+
+model LoyaltyAccount {
+  id             String   @id @default(uuid()) @db.Uuid
+  customerId     String   @unique @db.Uuid
+  // Spendable balance. A CHECK (points >= 0) backs the conditional updates.
+  points         Int      @default(0)
+  // Points ever earned (net of corrections): what tiers are measured on.
+  lifetimePoints Int      @default(0)
+  // Rolling expiry: the whole balance lapses expiryDays after the last earn.
+  lastEarnAt     DateTime @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([lastEarnAt], map: "idx_loyalty_account_last_earn")
+  @@map("growth_loyalty_accounts")
+}
+
+// Append-only ledger: rows are inserted, never updated or deleted.
+model LoyaltyTransaction {
+  id           String                 @id @default(uuid()) @db.Uuid
+  customerId   String                 @db.Uuid
+  type         LoyaltyTransactionType
+  // Signed: positive adds, negative spends.
+  points       Int
+  balanceAfter Int
+  reason       String
+  // The order (or expiry marker) this row is about; NULLs are distinct, so unkeyed rows are fine.
+  orderRef     String?
+  actorId      String?                @db.Uuid
+  createdAt    DateTime               @default(now()) @db.Timestamptz(6)
+
+  @@unique([customerId, type, orderRef], map: "uq_loyalty_tx_customer_type_ref")
+  @@index([customerId, createdAt], map: "idx_loyalty_tx_customer_created")
+  @@index([createdAt], map: "idx_loyalty_tx_created")
+  @@map("growth_loyalty_transactions")
+}
+
+// ---------------------------------------------- customer facts (retention)
+
+// Per-customer order summary kept up to date by POST /internal/loyalty/earn. It is the
+// audience base for campaigns and the input for retention scoring.
+model CustomerStat {
+  id              String   @id @default(uuid()) @db.Uuid
+  customerId      String   @unique @db.Uuid
+  orderCount      Int      @default(0)
+  totalSpentPaise Int      @default(0)
+  firstOrderAt    DateTime @db.Timestamptz(6)
+  lastOrderAt     DateTime @db.Timestamptz(6)
+  lastStoreId     String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([lastOrderAt], map: "idx_stat_last_order")
+  @@index([lastStoreId, lastOrderAt], map: "idx_stat_store_last_order")
+  @@index([orderCount], map: "idx_stat_order_count")
+  @@index([totalSpentPaise], map: "idx_stat_total_spent")
+  @@map("growth_customer_stats")
+}
+
+model CustomerOrder {
+  id          String   @id @default(uuid()) @db.Uuid
+  customerId  String   @db.Uuid
+  orderRef    String   @unique
+  storeId     String?  @db.Uuid
+  amountPaise Int
+  completedAt DateTime @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([customerId, completedAt], map: "idx_customer_order_history")
+  @@map("growth_customer_orders")
+}
+
+// ------------------------------------------------------------ notifications
+
+model NotificationPreference {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @unique @db.Uuid
+  sms        Boolean  @default(true)
+  email      Boolean  @default(true)
+  whatsapp   Boolean  @default(true)
+  push       Boolean  @default(false)
+  language   String   @default("en")
+  quietFrom  String?
+  quietTo    String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("growth_notification_preferences")
+}
+
+model NotificationTemplate {
+  id        String              @id @default(uuid()) @db.Uuid
+  name      String              @unique
+  channel   NotificationChannel
+  body      String
+  variables String[]
+  language  String              @default("en")
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime            @updatedAt @db.Timestamptz(6)
+
+  campaigns Campaign[]
+
+  @@index([createdAt], map: "idx_template_created")
+  @@map("growth_notification_templates")
+}
+
+// Every dispatch, delivered or not. It is the admin delivery log, the retry source and the
+// customer's in-app inbox. `recipient` is personal data: stored for retry, never returned.
+model Notification {
+  id                String              @id @default(uuid()) @db.Uuid
+  customerId        String?             @db.Uuid
+  channel           NotificationChannel
+  recipient         String
+  templateId        String
+  params            Json
+  title             String
+  body              String
+  status            NotificationStatus  @default(queued)
+  providerMessageId String?
+  error             String?
+  attempts          Int                 @default(1)
+  idempotencyKey    String?             @unique
+  campaignId        String?             @db.Uuid
+  readAt            DateTime?           @db.Timestamptz(6)
+  sentAt            DateTime?           @db.Timestamptz(6)
+  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(6)
+
+  @@index([customerId, createdAt], map: "idx_notification_customer_created")
+  @@index([status, createdAt], map: "idx_notification_status_created")
+  @@index([channel, createdAt], map: "idx_notification_channel_created")
+  @@index([campaignId], map: "idx_notification_campaign")
+  @@map("growth_notifications")
+}
+
+// Small windowed counters for abuse bounds (coupon validation, dispatch per recipient, win-back).
+model RateCounter {
+  id           String   @id @default(uuid()) @db.Uuid
+  key          String   @unique
+  count        Int      @default(0)
+  windowEndsAt DateTime @db.Timestamptz(6)
+
+  @@index([windowEndsAt], map: "idx_rate_counter_window")
+  @@map("growth_rate_counters")
+}
+
+// --------------------------------------------------------------- campaigns
+
+model Campaign {
+  id            String              @id @default(uuid()) @db.Uuid
+  name          String
+  channel       NotificationChannel
+  audience      Json
+  templateId    String?             @db.Uuid
+  message       String?
+  status        CampaignStatus      @default(draft)
+  scheduledAt   DateTime?           @db.Timestamptz(6)
+  startedAt     DateTime?           @db.Timestamptz(6)
+  completedAt   DateTime?           @db.Timestamptz(6)
+  cancelledAt   DateTime?           @db.Timestamptz(6)
+  // Keyset position in the audience: the last customer id already claimed into recipient rows.
+  cursor        String?             @db.Uuid
+  claimedCount  Int                 @default(0)
+  // Exclusive run lease: one send call at a time per campaign (see Campaign.Service).
+  leaseUntil    DateTime?           @db.Timestamptz(6)
+  maxRecipients Int
+  createdBy     String              @db.Uuid
+  createdAt     DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @db.Timestamptz(6)
+
+  template   NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  recipients CampaignRecipient[]
+
+  @@index([status, createdAt], map: "idx_campaign_status_created")
+  @@index([channel, createdAt], map: "idx_campaign_channel_created")
+  @@index([createdAt], map: "idx_campaign_created")
+  @@index([templateId], map: "idx_campaign_template")
+  @@map("growth_campaigns")
+}
+
+model CampaignRecipient {
+  id             String                  @id @default(uuid()) @db.Uuid
+  campaignId     String                  @db.Uuid
+  // The customer user id is the recipient key: addresses are resolved at send time, never stored here.
+  customerId     String                  @db.Uuid
+  status         CampaignRecipientStatus @default(pending)
+  error          String?
+  createdAt      DateTime                @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @db.Timestamptz(6)
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  // A restart or a double click can never create (and so never send) a second row.
+  @@unique([campaignId, customerId], map: "uq_recipient_campaign_customer")
+  @@index([campaignId, status], map: "idx_recipient_campaign_status")
+  @@map("growth_campaign_recipients")
+}
+
+model WinBack {
+  id             String              @id @default(uuid()) @db.Uuid
+  customerId     String              @db.Uuid
+  channel        NotificationChannel
+  couponId       String?             @db.Uuid
+  notificationId String?             @db.Uuid
+  createdAt      DateTime            @default(now()) @db.Timestamptz(6)
+
+  @@index([customerId, createdAt], map: "idx_winback_customer_created")
+  @@index([createdAt], map: "idx_winback_created")
+  @@map("growth_win_backs")
 }

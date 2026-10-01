@@ -55,6 +55,10 @@ jest.mock("../Queries/Payment.Query.js", () => {
   };
 });
 
+// The ledger and refund tables are covered by their own tests; here they only need to exist.
+jest.mock("../Queries/Ledger.Query.js", () => ({ LedgerQuery: { post: async () => true } }));
+jest.mock("../Queries/Refund.Query.js", () => ({ RefundQuery: { findByGatewayId: async () => null } }));
+
 import { PaymentService, mergeStatus } from "./Payment.Service.js";
 import { PaymentsWebhookController } from "../Controllers/PaymentsWebhook.Controller.js";
 

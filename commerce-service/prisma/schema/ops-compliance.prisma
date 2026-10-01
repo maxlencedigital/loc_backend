@@ -1,0 +1,239 @@
+// Package P09: compliance items (licences and statutory dates), audits with findings, and
+// safety incidents. Every state change of the three also lands in commerce_ops_activity,
+// an append-only history that doubles as the incident timeline and the audit evidence trail.
+//
+// storeId columns are plain uuids with no foreign key: the stores table belongs to core.prisma
+// and the service checks a store exists before it writes one. User ids (owner, assignee,
+// reporter) belong to the gateway and are validated over HTTP.
+
+enum ComplianceType {
+  licence
+  registration
+  certificate
+  permit
+  other
+}
+
+enum AuditType {
+  internal
+  external
+}
+
+enum AuditStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+}
+
+enum AuditFindingStatus {
+  open
+  in_progress
+  closed
+}
+
+// Declaration order is the severity order, so ORDER BY severity DESC puts critical first.
+enum AuditFindingSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum SafetyIncidentType {
+  injury
+  near_miss
+  fire_risk
+  security
+  hospitalisation
+  property_damage
+  vehicle_accident
+  unsafe_condition
+  other
+}
+
+enum SafetyIncidentStatus {
+  open
+  assigned
+  in_progress
+  escalated
+  closed
+}
+
+enum SafetyIncidentSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+model ComplianceItem {
+  id              String         @id @default(uuid()) @db.Uuid
+  name            String
+  type            ComplianceType
+  authority       String?
+  referenceNumber String?
+  issuedOn        DateTime?      @db.Date
+  expiresOn       DateTime       @db.Date
+  // Null is a company-wide item (a head-office licence). Uniqueness per (store, type, name)
+  // is two partial unique indexes in the migration: one for stores, one for company-wide.
+  storeId         String?        @db.Uuid
+  ownerId         String?        @db.Uuid
+  // [{ title, done }], replaced as a whole by PUT; bounded by the service.
+  checklist       Json           @default("[]")
+  // [{ id, name, url, contentType?, caption?, addedBy, addedAt }], appended; bounded by the service.
+  documents       Json           @default("[]")
+  createdBy       String         @db.Uuid
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+
+  renewals ComplianceRenewal[]
+
+  @@index([expiresOn], map: "idx_compliance_expires")
+  @@index([storeId, expiresOn], map: "idx_compliance_store_expires")
+  @@index([type, expiresOn], map: "idx_compliance_type_expires")
+  @@map("commerce_compliance_items")
+}
+
+// Append-only: a renewal is never edited or deleted.
+model ComplianceRenewal {
+  id                      String         @id @default(uuid()) @db.Uuid
+  itemId                  String         @db.Uuid
+  previousExpiresOn       DateTime       @db.Date
+  newExpiresOn            DateTime       @db.Date
+  previousReferenceNumber String?
+  referenceNumber         String?
+  renewedBy               String         @db.Uuid
+  renewedAt               DateTime       @default(now()) @db.Timestamptz(6)
+
+  item ComplianceItem @relation(fields: [itemId], references: [id])
+
+  @@index([itemId, renewedAt], map: "idx_compliance_renewal_item")
+  @@map("commerce_compliance_renewals")
+}
+
+model Audit {
+  id           String      @id @default(uuid()) @db.Uuid
+  type         AuditType
+  title        String
+  scope        String?
+  auditor      String?
+  storeId      String?     @db.Uuid
+  scheduledFor DateTime    @db.Date
+  status       AuditStatus @default(scheduled)
+  // [{ title, result: pass|fail|na|null, note?, evidence?: [{ url, name? }] }]
+  checklist    Json        @default("[]")
+  startedAt    DateTime?   @db.Timestamptz(6)
+  completedAt  DateTime?   @db.Timestamptz(6)
+  summary      String?
+  // Why the audit completed with critical findings still open; null when none were waived.
+  waiverReason String?
+  cancelReason String?
+  cancelledAt  DateTime?   @db.Timestamptz(6)
+  createdBy    String      @db.Uuid
+  createdAt    DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
+
+  findings AuditFinding[]
+
+  @@index([scheduledFor], map: "idx_audit_scheduled")
+  @@index([storeId, scheduledFor], map: "idx_audit_store_scheduled")
+  @@index([status, scheduledFor], map: "idx_audit_status_scheduled")
+  @@index([type, scheduledFor], map: "idx_audit_type_scheduled")
+  @@map("commerce_audits")
+}
+
+model AuditFinding {
+  id               String               @id @default(uuid()) @db.Uuid
+  auditId          String               @db.Uuid
+  // Copied from the audit (whose store never changes) so store scope needs no join.
+  storeId          String?              @db.Uuid
+  title            String
+  description      String?
+  severity         AuditFindingSeverity
+  status           AuditFindingStatus   @default(open)
+  ownerId          String?              @db.Uuid
+  dueDate          DateTime?            @db.Date
+  correctiveAction String?
+  evidence         String?
+  closedAt         DateTime?            @db.Timestamptz(6)
+  closedBy         String?              @db.Uuid
+  createdBy        String               @db.Uuid
+  createdAt        DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(6)
+
+  audit Audit @relation(fields: [auditId], references: [id])
+
+  @@index([auditId, createdAt], map: "idx_finding_audit_created")
+  @@index([auditId, status], map: "idx_finding_audit_status")
+  @@index([status, severity, dueDate], map: "idx_finding_open_queue")
+  @@index([ownerId, status], map: "idx_finding_owner_status")
+  @@index([storeId, status], map: "idx_finding_store_status")
+  @@map("commerce_audit_findings")
+}
+
+model SafetyIncident {
+  id               String                 @id @default(uuid()) @db.Uuid
+  type             SafetyIncidentType
+  description      String
+  occurredAt       DateTime               @db.Timestamptz(6)
+  severity         SafetyIncidentSeverity
+  status           SafetyIncidentStatus   @default(open)
+  storeId          String?                @db.Uuid
+  location         String?
+  // Up to 20 user ids, as the reporter listed them.
+  peopleInvolved   Json                   @default("[]")
+  immediateAction  String?
+  reportedBy       String                 @db.Uuid
+  reportedByName   String?
+  assigneeId       String?                @db.Uuid
+  assignedAt       DateTime?              @db.Timestamptz(6)
+  escalatedAt      DateTime?              @db.Timestamptz(6)
+  escalationReason String?
+  // [{ id, url, name?, caption?, addedBy, addedAt }], appended; bounded by the service.
+  photos           Json                   @default("[]")
+  actionCount      Int                    @default(0)
+  closedAt         DateTime?              @db.Timestamptz(6)
+  closedBy         String?                @db.Uuid
+  outcome          String?
+  rootCause        String?
+  preventiveMeasures String?
+  claimId          String?                @db.Uuid
+  claimedAt        DateTime?              @db.Timestamptz(6)
+  // Optional client key: a retried report returns the first incident instead of a second one.
+  idempotencyKey   String?
+  createdAt        DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
+
+  @@unique([reportedBy, idempotencyKey], map: "uq_incident_reporter_key")
+  @@index([occurredAt], map: "idx_incident_occurred")
+  @@index([storeId, occurredAt], map: "idx_incident_store_occurred")
+  @@index([status, occurredAt], map: "idx_incident_status_occurred")
+  @@index([type, occurredAt], map: "idx_incident_type_occurred")
+  @@index([severity, occurredAt], map: "idx_incident_severity_occurred")
+  @@index([status, escalatedAt], map: "idx_incident_escalated")
+  @@map("commerce_safety_incidents")
+}
+
+// Append-only history of every state change in the three modules. No update or delete
+// exists in the Query layer. entity is compliance_item, audit, audit_finding or incident.
+model OpsActivity {
+  id         String   @id @default(uuid()) @db.Uuid
+  entity     String
+  entityId   String   @db.Uuid
+  action     String
+  actorId    String   @db.Uuid
+  actorName  String?
+  storeId    String?  @db.Uuid
+  fromStatus String?
+  toStatus   String?
+  detail     Json?
+  at         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([entity, entityId, at], map: "idx_ops_activity_entity")
+  @@index([at], map: "idx_ops_activity_at")
+  @@index([actorId, at], map: "idx_ops_activity_actor")
+  @@index([entity, at], map: "idx_ops_activity_entity_at")
+  @@index([action, at], map: "idx_ops_activity_action")
+  @@map("commerce_ops_activity")
+}

@@ -1,8 +1,10 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { PayService } from "../Services/Pay.Service.js";
+import { idempotencyKeyOf } from "../Utils/PeopleInput.js";
 
 /**
  * @openapi
@@ -40,12 +42,10 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getCompensation = async (_req: Request, res: Response) => {
+const getCompensation = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.getCompensation(req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -83,17 +83,16 @@ const getCompensation = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The new terms do not start after the latest ones, or the person has left."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setCompensation = async (req: Request, res: Response) => {
+const setCompensation = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["baseSalary", "effectiveFrom"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.setCompensation(req.user as RequestUser, req.params.id, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -146,12 +145,10 @@ const setCompensation = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getEmployeeEarnings = async (_req: Request, res: Response) => {
+const getEmployeeEarnings = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.getEmployeeEarnings(req.params.id, resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -211,12 +208,10 @@ const getEmployeeEarnings = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listIncentiveEarnings = async (_req: Request, res: Response) => {
+const listIncentiveEarnings = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.listIncentiveEarnings(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -239,16 +234,16 @@ const listIncentiveEarnings = async (_req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "The period has not ended, or the incentive was already approved."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const approveIncentiveEarning = async (_req: Request, res: Response) => {
+const approveIncentiveEarning = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.approveIncentiveEarning(req.user as RequestUser, req.params.id, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -309,12 +304,10 @@ const approveIncentiveEarning = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listIncentiveSchemes = async (_req: Request, res: Response) => {
+const listIncentiveSchemes = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.listSchemes(req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -383,13 +376,10 @@ const listIncentiveSchemes = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createIncentiveScheme = async (req: Request, res: Response) => {
+const createIncentiveScheme = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "appliesTo", "metric"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await PayService.createScheme(req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -442,12 +432,10 @@ const createIncentiveScheme = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getIncentiveScheme = async (_req: Request, res: Response) => {
+const getIncentiveScheme = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.getScheme(req.params.id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -522,12 +510,10 @@ const getIncentiveScheme = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateIncentiveScheme = async (_req: Request, res: Response) => {
+const updateIncentiveScheme = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.updateScheme(req.params.id, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -561,17 +547,16 @@ const updateIncentiveScheme = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The scheme is switched off."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const assignIncentiveScheme = async (req: Request, res: Response) => {
+const assignIncentiveScheme = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["employeeIds"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.assignScheme(req.user as RequestUser, req.params.id, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -586,6 +571,12 @@ const assignIncentiveScheme = async (req: Request, res: Response) => {
  *     description: "**Who can call this:** admin, hr (super_admin always allowed)."
  *     tags: ["HR - Pay & Incentives"]
  *     x-roles: [admin, hr]
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: false
+ *         schema: { type: string }
+ *         description: "Optional. Repeating a request with the same key returns the first result."
  *     requestBody:
  *       required: true
  *       content:
@@ -605,15 +596,14 @@ const assignIncentiveScheme = async (req: Request, res: Response) => {
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "More than the approved incentives, or the Idempotency-Key was used for a different payout."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const recordPayout = async (req: Request, res: Response) => {
+const recordPayout = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["employeeId", "amount", "type", "period", "paidOn"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await PayService.recordPayout(req.user as RequestUser, resolveStoreScope(req), req.body, idempotencyKeyOf(req.header("idempotency-key"))) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -676,12 +666,10 @@ const recordPayout = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listPayouts = async (_req: Request, res: Response) => {
+const listPayouts = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await PayService.listPayouts(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

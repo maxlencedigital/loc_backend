@@ -1,0 +1,454 @@
+// HR core (package P05): the employee record and what hangs off it day to day:
+// documents, onboarding, career history, attendance, rosters, leave, holidays,
+// daily reports. Later packages (training, performance, pay, grievances, employee
+// self-service) reference HrEmployee by a plain `employeeId` uuid column and read
+// it through src/Services/EmployeeAccess.ts, never by adding relations here.
+//
+// Dates of the working day (`@db.Date`) are calendar dates in the business time
+// zone (IST); instants are `Timestamptz`. Leave is counted in half-days (Int) so a
+// balance is exact integer arithmetic; the API converts to days at the boundary.
+
+enum HrEmployeeType {
+  staff
+  rider
+  manager
+  hr
+  admin
+}
+
+enum HrEmployeeStatus {
+  active
+  on_leave
+  notice
+  exited
+}
+
+enum HrDocumentType {
+  id_proof
+  address_proof
+  contract
+  certificate
+  medical
+  other
+}
+
+enum HrOnboardingCategory {
+  documents
+  equipment
+  access
+  training
+  induction
+}
+
+enum HrOnboardingStatus {
+  pending
+  given
+  shown
+  done
+}
+
+// What a history row records a change of. Append-only.
+enum HrHistoryField {
+  designation
+  role
+  employee_type
+  store
+  pay_grade
+  reporting_to
+  status
+}
+
+enum HrAttendanceStatus {
+  present
+  late
+  absent
+  on_leave
+  off
+}
+
+enum HrLeaveType {
+  casual
+  sick
+  earned
+  unpaid
+  other
+}
+
+enum HrLeaveStatus {
+  pending
+  approved
+  rejected
+  withdrawn
+}
+
+enum HrLeaveLedgerKind {
+  grant
+  debit
+}
+
+enum HrHolidayType {
+  public
+  company
+  store
+}
+
+model HrEmployee {
+  id                String           @id @default(uuid()) @db.Uuid
+  // Human-readable, e.g. EMP-00042; numbered by SequenceCounter ('employee_code').
+  code              String           @unique
+  name              String
+  employeeType      HrEmployeeType
+  // Canonical +91XXXXXXXXXX. One person, one record: HR edits the old record instead.
+  phone             String           @unique
+  email             String?
+  // No foreign key: the store table belongs to the store modules; riders may have none.
+  storeId           String?          @db.Uuid
+  // Job role used for onboarding templates and career paths, e.g. "Washer".
+  role              String
+  designation       String?
+  payGrade          String?
+  joinDate          DateTime         @db.Date
+  dateOfBirth       DateTime?        @db.Date
+  address           String?
+  emergencyName     String?
+  emergencyPhone    String?
+  emergencyRelation String?
+  bankHolderName    String?
+  // Only the last four digits are kept in clear, for masked display.
+  bankAccountLast4  String?
+  // AES-256-GCM, "v1:iv:tag:ciphertext" (see src/Utils/FieldCipher.ts).
+  bankAccountEnc    String?
+  bankIfsc          String?
+  // The login account (gateway user), once one exists; verified over HTTP, not a foreign key.
+  gatewayUserId     String?          @unique @db.Uuid
+  reportingTo       String?          @db.Uuid
+  status            HrEmployeeStatus @default(active)
+  lastWorkingDay    DateTime?        @db.Date
+  exitReason        String?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(6)
+
+  documents       HrEmployeeDocument[]
+  onboardingItems HrOnboardingItem[]
+  history         HrEmployeeHistory[]
+  attendance      HrAttendance[]
+  corrections     HrAttendanceCorrection[]
+  rosters         HrRoster[]
+  leaveRequests   HrLeaveRequest[]
+  leaveBalances   HrLeaveBalance[]
+  leaveLedger     HrLeaveLedger[]
+  dailyReports    HrDailyReport[]
+  careerPlan      HrCareerPlan?
+  careerReviews   HrCareerReview[]
+
+  @@index([storeId, name], map: "idx_hr_employee_store_name")
+  @@index([status, name], map: "idx_hr_employee_status_name")
+  @@index([employeeType, status], map: "idx_hr_employee_type_status")
+  @@index([reportingTo], map: "idx_hr_employee_reporting_to")
+  @@map("commerce_hr_employees")
+}
+
+// A reference to a file kept elsewhere (object storage); this service stores no bytes.
+model HrEmployeeDocument {
+  id               String         @id @default(uuid()) @db.Uuid
+  employeeId       String         @db.Uuid
+  type             HrDocumentType
+  fileName         String
+  fileUrl          String
+  mimeType         String?
+  sizeBytes        Int?
+  uploadedByUserId String?
+  uploadedAt       DateTime       @default(now()) @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, uploadedAt(sort: Desc)], map: "idx_hr_doc_employee_uploaded")
+  @@map("commerce_hr_employee_documents")
+}
+
+// The checklist for a job role (role key is lower-case); "default" is the fallback.
+model HrOnboardingTemplateItem {
+  id       String               @id @default(uuid()) @db.Uuid
+  role     String
+  position Int
+  title    String
+  category HrOnboardingCategory @default(induction)
+
+  @@unique([role, position], map: "uq_hr_onboarding_template_position")
+  @@map("commerce_hr_onboarding_template_items")
+}
+
+// A copy of the template taken when the person joined: a later template edit never
+// rewrites what an existing joiner was promised.
+model HrOnboardingItem {
+  id              String               @id @default(uuid()) @db.Uuid
+  employeeId      String               @db.Uuid
+  position        Int
+  title           String
+  category        HrOnboardingCategory
+  status          HrOnboardingStatus   @default(pending)
+  note            String?
+  doneAt          DateTime?            @db.Timestamptz(6)
+  updatedByUserId String?
+  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime             @updatedAt @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, position], map: "idx_hr_onboarding_item_employee")
+  @@map("commerce_hr_onboarding_items")
+}
+
+// Append-only career history, written in the same transaction as the change to the
+// employee row, so the record and its history cannot disagree.
+model HrEmployeeHistory {
+  id              String         @id @default(uuid()) @db.Uuid
+  employeeId      String         @db.Uuid
+  field           HrHistoryField
+  fromValue       String?
+  toValue         String?
+  effectiveDate   DateTime       @db.Date
+  reason          String?
+  changedByUserId String?
+  changedByName   String
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, createdAt(sort: Desc)], map: "idx_hr_history_employee_created")
+  @@map("commerce_hr_employee_history")
+}
+
+// One row per employee per day. Only present/late are ever written; absent, on_leave
+// and off are derived at read time from leave and holidays.
+model HrAttendance {
+  id         String             @id @default(uuid()) @db.Uuid
+  employeeId String             @db.Uuid
+  // The store they worked at that day (a historical fact; the employee may transfer later).
+  storeId    String?            @db.Uuid
+  date       DateTime           @db.Date
+  status     HrAttendanceStatus
+  clockIn    DateTime?          @db.Timestamptz(6)
+  clockOut   DateTime?          @db.Timestamptz(6)
+  corrected  Boolean            @default(false)
+  createdAt  DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime           @updatedAt @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, date], map: "uq_hr_attendance_employee_date")
+  @@index([storeId, date], map: "idx_hr_attendance_store_date")
+  @@index([date], map: "idx_hr_attendance_date")
+  @@map("commerce_hr_attendance")
+}
+
+// Append-only audit of every manual change to an attendance day.
+model HrAttendanceCorrection {
+  id                String    @id @default(uuid()) @db.Uuid
+  employeeId        String    @db.Uuid
+  storeId           String?   @db.Uuid
+  date              DateTime  @db.Date
+  previousClockIn   DateTime? @db.Timestamptz(6)
+  previousClockOut  DateTime? @db.Timestamptz(6)
+  newClockIn        DateTime? @db.Timestamptz(6)
+  newClockOut       DateTime? @db.Timestamptz(6)
+  reason            String
+  correctedByUserId String?
+  correctedByName   String
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, date(sort: Desc)], map: "idx_hr_correction_employee_date")
+  @@index([storeId, date(sort: Desc)], map: "idx_hr_correction_store_date")
+  @@index([date(sort: Desc)], map: "idx_hr_correction_date")
+  @@map("commerce_hr_attendance_corrections")
+}
+
+// Shifts are same-day, in minutes from midnight (IST); the API speaks "HH:MM".
+model HrRoster {
+  id              String   @id @default(uuid()) @db.Uuid
+  employeeId      String   @db.Uuid
+  storeId         String   @db.Uuid
+  date            DateTime @db.Date
+  shiftStartMin   Int
+  shiftEndMin     Int
+  createdByUserId String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, date, shiftStartMin], map: "uq_hr_roster_employee_shift")
+  @@index([storeId, date], map: "idx_hr_roster_store_date")
+  @@index([employeeId, date], map: "idx_hr_roster_employee_date")
+  @@map("commerce_hr_rosters")
+}
+
+// One entitlement per leave type for the whole company, in half-days per year.
+model HrLeavePolicy {
+  id             String      @id @default(uuid()) @db.Uuid
+  type           HrLeaveType @unique
+  annualHalfDays Int
+  carryForward   Boolean     @default(false)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@map("commerce_hr_leave_policies")
+}
+
+// The running balance for one person, type and calendar year. It is only ever changed
+// together with a ledger row, under a row lock, in the transaction that decides a request.
+model HrLeaveBalance {
+  id               String      @id @default(uuid()) @db.Uuid
+  employeeId       String      @db.Uuid
+  type             HrLeaveType
+  year             Int
+  entitledHalfDays Int
+  takenHalfDays    Int         @default(0)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, type, year], map: "uq_hr_leave_balance")
+  @@map("commerce_hr_leave_balances")
+}
+
+// Append-only. A request can be debited at most once per year: the unique key is the
+// last line of defence against a double approval.
+model HrLeaveLedger {
+  id            String            @id @default(uuid()) @db.Uuid
+  employeeId    String            @db.Uuid
+  type          HrLeaveType
+  year          Int
+  kind          HrLeaveLedgerKind
+  deltaHalfDays Int
+  requestId     String?           @db.Uuid
+  note          String?
+  createdAt     DateTime          @default(now()) @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, year, kind], map: "uq_hr_leave_ledger_request")
+  @@index([employeeId, type, year], map: "idx_hr_leave_ledger_employee")
+  @@map("commerce_hr_leave_ledger")
+}
+
+model HrLeaveRequest {
+  id                 String        @id @default(uuid()) @db.Uuid
+  employeeId         String        @db.Uuid
+  type               HrLeaveType
+  fromDate           DateTime      @db.Date
+  toDate             DateTime      @db.Date
+  halfDay            Boolean       @default(false)
+  // Chargeable half-days (holidays excluded); fixed again at the moment of approval.
+  chargeableHalfDays Int
+  status             HrLeaveStatus @default(pending)
+  reason             String?
+  decidedByUserId    String?
+  decidedByName      String?
+  decidedAt          DateTime?     @db.Timestamptz(6)
+  decisionNote       String?
+  createdAt          DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_hr_leave_status_created")
+  @@index([employeeId, fromDate], map: "idx_hr_leave_employee_from")
+  @@index([status, fromDate, toDate], map: "idx_hr_leave_status_range")
+  @@map("commerce_hr_leave_requests")
+}
+
+model HrHoliday {
+  id        String        @id @default(uuid()) @db.Uuid
+  date      DateTime      @db.Date
+  name      String
+  type      HrHolidayType @default(public)
+  // For type "store": the stores that close. Empty for public and company holidays.
+  storeIds  String[]      @db.Uuid
+  createdAt DateTime      @default(now()) @db.Timestamptz(6)
+
+  @@unique([date, name], map: "uq_hr_holiday_date_name")
+  @@index([date], map: "idx_hr_holiday_date")
+  @@map("commerce_hr_holidays")
+}
+
+model HrDailyReport {
+  id            String   @id @default(uuid()) @db.Uuid
+  employeeId    String   @db.Uuid
+  storeId       String?  @db.Uuid
+  date          DateTime @db.Date
+  summary       String
+  completed     String[]
+  blockers      String?
+  // Lower-cased, punctuation-free form of `blockers`, so recurring ones group exactly.
+  blockerKey    String?
+  minutesWorked Int?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, date], map: "uq_hr_daily_report_employee_date")
+  @@index([storeId, date(sort: Desc)], map: "idx_hr_daily_report_store_date")
+  @@index([date(sort: Desc)], map: "idx_hr_daily_report_date")
+  @@index([blockerKey, date], map: "idx_hr_daily_report_blocker")
+  @@map("commerce_hr_daily_reports")
+}
+
+// Handing an absent person's work to someone who is in. The log is the record; the
+// services that own orders, batches and routes apply it when they track assignments.
+model HrWorkReassignment {
+  id             String   @id @default(uuid()) @db.Uuid
+  fromEmployeeId String   @db.Uuid
+  toEmployeeId   String   @db.Uuid
+  date           DateTime @db.Date
+  workItemIds    String[] @db.Uuid
+  byUserId       String?
+  byName         String
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([fromEmployeeId, date], map: "idx_hr_reassign_from_date")
+  @@index([date], map: "idx_hr_reassign_date")
+  @@map("commerce_hr_work_reassignments")
+}
+
+model HrCareerPlan {
+  id             String    @id @default(uuid()) @db.Uuid
+  employeeId     String    @unique @db.Uuid
+  targetRole     String?
+  goals          Json
+  skillGaps      String[]
+  agreedActions  Json
+  lastReviewedAt DateTime? @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@map("commerce_hr_career_plans")
+}
+
+model HrCareerReview {
+  id               String   @id @default(uuid()) @db.Uuid
+  employeeId       String   @db.Uuid
+  note             String
+  reviewedByUserId String?
+  reviewedByName   String
+  reviewedAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, reviewedAt(sort: Desc)], map: "idx_hr_career_review_employee")
+  @@map("commerce_hr_career_reviews")
+}
+
+model HrCareerPath {
+  id           String   @id @default(uuid()) @db.Uuid
+  // Lower-case role key, the same normalisation as onboarding templates.
+  role         String   @unique
+  nextRoles    String[]
+  requirements String[]
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("commerce_hr_career_paths")
+}

@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { StoreCashService } from "../Services/StoreCash.Service.js";
 
 /**
  * @openapi
@@ -52,13 +53,13 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const countCash = async (req: Request, res: Response) => {
+const countCash = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["date", "countedAmount"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await StoreCashService.countCash(scope, user, req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -120,12 +121,12 @@ const countCash = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listCashCounts = async (_req: Request, res: Response) => {
+const listCashCounts = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await StoreCashService.listCounts(scope, req.params.id, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -165,13 +166,13 @@ const listCashCounts = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const recordCashDeposit = async (req: Request, res: Response) => {
+const recordCashDeposit = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["amount", "bankReference"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await StoreCashService.recordCashDeposit(scope, user, req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -232,12 +233,12 @@ const recordCashDeposit = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listCashDeposits = async (_req: Request, res: Response) => {
+const listCashDeposits = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await StoreCashService.listCashDeposits(scope, req.params.id, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -283,12 +284,12 @@ const listCashDeposits = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listStoreCashVariances = async (_req: Request, res: Response) => {
+const listStoreCashVariances = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await StoreCashService.listStoreCashVariances(scope, req.params.id, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -329,13 +330,13 @@ const listStoreCashVariances = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "The cash count or deposit for the day is still missing."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const closeStoreDay = async (req: Request, res: Response) => {
+const closeStoreDay = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["date"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as NonNullable<typeof req.user>;
+    const result = await StoreCashService.closeStoreDay(scope, user, req.params.id, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -379,12 +380,12 @@ const closeStoreDay = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getStoreDayStatus = async (_req: Request, res: Response) => {
+const getStoreDayStatus = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await StoreCashService.getStoreDayStatus(scope, req.params.id, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

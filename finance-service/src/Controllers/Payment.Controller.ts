@@ -1,12 +1,11 @@
 import { Response } from "express";
 import { IdentifiedRequest } from "../Middleware/Identity.js";
-import {
-  handleErrorResponse,
-  handleNotImplementedResponse,
-  handleSuccessResponse,
-} from "../../commons/Response/Response.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { parsePage } from "../../commons/Utils/Pagination.js";
+import { actorOf, resolveStoreScope } from "../Middleware/StoreScope.js";
 import { created, successCode } from "../../commons/Utils/StatusCode.js";
 import { PaymentService } from "../Services/Payment.Service.js";
+import { PaymentAdminService } from "../Services/PaymentAdmin.Service.js";
 
 /**
  * @openapi
@@ -20,6 +19,12 @@ import { PaymentService } from "../Services/Payment.Service.js";
  *       order the caller has already priced. Returns what the app needs to open
  *       Razorpay Checkout (`razorpayOrderId`, `amountPaise`, `keyId`).
  *     tags: ["Admin - Payments & Reconciliation"]
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: false
+ *         schema: { type: string, maxLength: 128 }
+ *         description: "A retry with the same key returns the first checkout instead of creating a second Razorpay order."
  *     requestBody:
  *       required: true
  *       content:
@@ -42,7 +47,10 @@ import { PaymentService } from "../Services/Payment.Service.js";
  */
 const createOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    const result = await PaymentService.createCheckout(req.body, req.user?.id ?? null);
+    const result = await PaymentService.createCheckout(req.body, req.user?.id ?? null, {
+      storeId: resolveStoreScope(req),
+      idempotencyKey: req.header("idempotency-key"),
+    });
     return handleSuccessResponse({ statusCode: created, result }, res, "Payment order created.");
   } catch (error) {
     return handleErrorResponse(error, res);
@@ -95,8 +103,8 @@ const verify = async (req: IdentifiedRequest, res: Response) => {
  *   get:
  *     summary: List payments flagged for manual review (admin/staff only)
  *     description: >
- *       Payments where a gateway settlement amount didn't match the
- *       corresponding Order.paymentId, flagged for manual review.
+ *       Payments where the amount the gateway reports differs from the amount requested,
+ *       flagged for manual review. A store-bound role sees only its own store's payments.
  *     tags: ["Admin - Payments & Reconciliation"]
  *     parameters:
  *       - in: query
@@ -116,11 +124,14 @@ const verify = async (req: IdentifiedRequest, res: Response) => {
  *       403:
  *         description: Authenticated but not admin/staff.
  */
-const listMismatches = async (_req: IdentifiedRequest, res: Response) => {
-  return handleNotImplementedResponse(
-    res,
-    "Payment mismatch listing scaffolded — reconciliation matching logic pending."
-  );
+const listMismatches = async (req: IdentifiedRequest, res: Response) => {
+  try {
+    const query = req.query as Record<string, unknown>;
+    const result = await PaymentAdminService.listMismatches(query, actorOf(req), parsePage(query));
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
 };
 
 export const PaymentController = { createOrder, verify, listMismatches };

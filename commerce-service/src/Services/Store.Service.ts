@@ -3,7 +3,9 @@ import { toCustomException } from "../../commons/Exception/ToCustomException.js"
 import { badRequest, conflict, notFound } from "../../commons/Utils/StatusCode.js";
 import { IStore, IStoreUpdate, STORE_STATUSES, STORE_TYPES } from "../Models/Store/Store.Interface.js";
 import { isUniqueViolation } from "../Queries/DatabaseError.js";
+import { OrderQuery } from "../Queries/Order.Query.js";
 import { StoreQuery } from "../Queries/Store.Query.js";
+import { ORDER_STATUS_FLOW, OrderStatus, isFinalStatus } from "../Models/Order/OrderStatus.js";
 import { StoreScope } from "../Middleware/StoreScope.js";
 import { oneOf, optionalOneOf, parseBody, queryString, text, wholeNumber } from "../Utils/Input.js";
 import { isUuid } from "../Utils/Uuid.js";
@@ -102,10 +104,20 @@ const update = async (id: string, input: unknown) => {
   }
 };
 
+const OPEN_STATUSES: OrderStatus[] = ORDER_STATUS_FLOW.filter((status) => !isFinalStatus(status));
+
+// A store with orders still moving through it cannot be closed: they would be stranded.
 const deactivate = async (id: string) => {
   try {
     if (!isUuid(id)) throw new CustomException(NOT_FOUND, notFound);
-    if (!(await StoreQuery.findById(id, null))) throw new CustomException(NOT_FOUND, notFound);
+    const store = await StoreQuery.findById(id, null);
+    if (!store) throw new CustomException(NOT_FOUND, notFound);
+    if (store.status !== "closed") {
+      const open = Object.values(await OrderQuery.countByStatus(id, OPEN_STATUSES)).reduce((sum, n) => sum + (n ?? 0), 0);
+      if (open > 0) {
+        throw new CustomException(`This store has ${open} open order${open === 1 ? "" : "s"}. Finish or cancel them before closing the store.`, conflict);
+      }
+    }
     return toStoreView(await StoreQuery.update(id, { status: "closed" }));
   } catch (error) {
     throw toCustomException(error);
