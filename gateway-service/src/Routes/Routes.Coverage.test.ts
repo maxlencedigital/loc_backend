@@ -41,6 +41,7 @@ const collect = (stack: any[]): RouteInfo[] => {
 const PUBLIC_ROUTES = [
   "/auth/register",
   "/auth/login",
+  "/auth/customer/login",
   "/auth/refresh",
   "/auth/register/send-otp",
   "/auth/register/verify-otp",

@@ -85,6 +85,48 @@ const login = async (req: Request, res: Response) => {
 
 /**
  * @openapi
+ * /auth/customer/login:
+ *   post:
+ *     operationId: customerLogin
+ *     summary: Customer login with email and password
+ *     description: >
+ *       Public. For the customer app. Only customer accounts can sign in here: a team account
+ *       (admin, manager, staff, ...) gets the same 401 as a wrong password, so this cannot be used to
+ *       find out which emails belong to staff. Team members sign in with POST /auth/login.
+ *       Accounts created with Google or Facebook have no password and cannot use this endpoint.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               password: { type: string }
+ *     responses:
+ *       200:
+ *         description: "{ token, refreshToken, expiresIn, user: { id, name, email, phoneNumber, isPhoneVerified, role } }. Use refreshToken with POST /auth/refresh."
+ *       400:
+ *         description: Email or password missing.
+ *       401:
+ *         description: Invalid email or password.
+ *       429:
+ *         description: Too many attempts; wait and try again.
+ */
+const customerLogin = async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body ?? {};
+    const result = await AuthService.customerLogin(email, password);
+    return handleSuccessResponse({ statusCode: successCode, result }, res, "Login successful.");
+  } catch (error) {
+    return handleErrorResponse(error, res);
+  }
+};
+
+/**
+ * @openapi
  * /auth/refresh:
  *   post:
  *     summary: Exchange a refresh token for a new access token and a new refresh token
@@ -169,4 +211,4 @@ const createPrivilegedUser = async (req: Request, res: Response) => {
   }
 };
 
-export const AuthController = { register, login, refresh, createPrivilegedUser };
+export const AuthController = { register, login, customerLogin, refresh, createPrivilegedUser };

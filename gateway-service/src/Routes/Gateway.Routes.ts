@@ -22,6 +22,7 @@ router.get("/health", HealthController.check);
 // brute-force target the rest of the API is not.
 router.post("/auth/register", authLimiter, AuthController.register);
 router.post("/auth/login", authLimiter, AuthController.login);
+router.post("/auth/customer/login", authLimiter, AuthController.customerLogin);
 router.post("/auth/refresh", authLimiter, AuthController.refresh);
 
 // Customer-facing auth. OTP flows are additionally throttled per phone/email

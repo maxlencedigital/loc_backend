@@ -119,23 +119,52 @@ const createPrivilegedUser = async (input: {
   }
 };
 
+// One message for every way a credential check can fail, so the answer never says
+// whether the email exists, is a social account, is switched off, or has another role.
+const invalidCredentials = () => new CustomException("Invalid email or password.", unauthorized);
+
+// Checks email and password and returns the account. Every failure is the same 401.
+const authenticate = async (email: unknown, password: unknown) => {
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+    throw new CustomException("Email and password are required.", badRequest);
+  }
+  const user = await UserQuery.findByEmail(email);
+  // Covers social-login accounts, which have no password: bcrypt.compare
+  // against null would throw a 500 that reveals the account exists.
+  if (!user || !user.isActive || !user.passwordHash) throw invalidCredentials();
+  if (!(await bcrypt.compare(password, user.passwordHash))) throw invalidCredentials();
+  return user;
+};
+
 const login = async (email: string, password: string) => {
   try {
-    if (!email || !password) {
-      throw new CustomException("Email and password are required.", badRequest);
-    }
-    const user = await UserQuery.findByEmail(email);
-    // Covers social-login accounts, which have no password: bcrypt.compare
-    // against null would throw a 500 that reveals the account exists.
-    if (!user || !user.isActive || !user.passwordHash) {
-      throw new CustomException("Invalid email or password.", unauthorized);
-    }
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch) {
-      throw new CustomException("Invalid email or password.", unauthorized);
-    }
+    const user = await authenticate(email, password);
     const loggedIn = await UserQuery.recordLogin(user.id);
     return { ...(await SessionService.issue(loggedIn)), user: toDashboardUser(loggedIn) };
+  } catch (error) {
+    throw toCustomException(error);
+  }
+};
+
+// The customer app's login. Customers only: a team account is refused with the same
+// 401 as a wrong password, after the password check, so neither the message nor the
+// timing reveals that the email belongs to staff.
+const customerLogin = async (email: string, password: string) => {
+  try {
+    const user = await authenticate(email, password);
+    if (user.role !== "customer") throw invalidCredentials();
+    const loggedIn = await UserQuery.recordLogin(user.id);
+    return {
+      ...(await SessionService.issue(loggedIn)),
+      user: {
+        id: loggedIn.id,
+        name: loggedIn.name,
+        email: loggedIn.email,
+        phoneNumber: loggedIn.phoneNumber,
+        isPhoneVerified: loggedIn.isPhoneVerified,
+        role: loggedIn.role,
+      },
+    };
   } catch (error) {
     throw toCustomException(error);
   }
@@ -494,6 +523,7 @@ const passwordReset = async (verificationId: string, otp: string, newPassword: s
 export const AuthService = {
   register,
   login,
+  customerLogin,
   getProfile,
   verifyToken,
   createPrivilegedUser,

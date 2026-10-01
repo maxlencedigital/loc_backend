@@ -451,6 +451,80 @@ describe("AuthService.getProfile", () => {
   });
 });
 
+describe("AuthService.customerLogin", () => {
+  const customer = (overrides: object = {}) =>
+    accountRow({ role: "customer", storeId: null, isPhoneVerified: true, ...overrides });
+
+  it("signs a customer in with email and password and returns a token pair", async () => {
+    const passwordHash = await bcrypt.hash("correct-password", 4);
+    mockedUserQuery.findByEmail.mockResolvedValue(customer({ passwordHash }) as any);
+    mockedUserQuery.recordLogin.mockResolvedValue(customer({ passwordHash }) as any);
+
+    const result = await AuthService.customerLogin("a@x.com", "correct-password");
+
+    expect(result.user).toEqual({
+      id: "1",
+      name: "Asha Rao",
+      email: "a@x.com",
+      phoneNumber: "+919876500001",
+      isPhoneVerified: true,
+      role: "customer",
+    });
+    expect(result.refreshToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(result.expiresIn).toBe(900);
+    expect(AuthService.verifyToken(result.token)).toMatchObject({ userId: "1", role: "customer" });
+    expect(mockedUserQuery.recordLogin).toHaveBeenCalledWith("1");
+  });
+
+  it.each(["admin", "manager", "staff", "hr", "driver", "super_admin"])(
+    "refuses a %s account with the same 401 as a wrong password",
+    async (role) => {
+      const passwordHash = await bcrypt.hash("correct-password", 4);
+      mockedUserQuery.findByEmail.mockResolvedValue(customer({ passwordHash, role }) as any);
+
+      const error = await AuthService.customerLogin("a@x.com", "correct-password").catch((e) => e);
+
+      expect(error).toBeInstanceOf(CustomException);
+      expect(error.errorCode).toBe(401);
+      expect(error.displayMessage).toBe("Invalid email or password.");
+      expect(mockedUserQuery.recordLogin).not.toHaveBeenCalled();
+    }
+  );
+
+  it("answers a wrong password, an unknown email, a social account and a deactivated account identically", async () => {
+    const passwordHash = await bcrypt.hash("correct-password", 4);
+    const attempts: Array<[object | null, string]> = [
+      [customer({ passwordHash }), "wrong-password"],
+      [null, "correct-password"],
+      [customer({ passwordHash: null }), "correct-password"],
+      [customer({ passwordHash, isActive: false }), "correct-password"],
+    ];
+
+    const errors = [];
+    for (const [row, password] of attempts) {
+      mockedUserQuery.findByEmail.mockResolvedValue(row as any);
+      errors.push(await AuthService.customerLogin("a@x.com", password).catch((e) => e));
+    }
+
+    for (const error of errors) {
+      expect(error.errorCode).toBe(401);
+      expect(error.displayMessage).toBe("Invalid email or password.");
+    }
+  });
+
+  it.each([[undefined, "pw"], ["a@x.com", undefined], ["", "pw"], ["a@x.com", ""], [42, "pw"], [{}, "pw"]])(
+    "rejects missing or malformed input (%p, %p) with a 400 before touching the database",
+    async (email, password) => {
+      mockedUserQuery.findByEmail.mockClear();
+
+      const error = await AuthService.customerLogin(email as any, password as any).catch((e) => e);
+
+      expect(error.errorCode).toBe(400);
+      expect(mockedUserQuery.findByEmail).not.toHaveBeenCalled();
+    }
+  );
+});
+
 describe("AuthService.verifyToken", () => {
   it("throws CustomException on a garbage token", () => {
     expect(() => AuthService.verifyToken("not-a-real-token")).toThrow(CustomException);
