@@ -15,6 +15,7 @@ import { MIN_PASSWORD_LENGTH, SALT_ROUNDS } from "./Password.js";
 import { toDashboardUser } from "../Models/User/DashboardUser.js";
 import { JWT_ALGORITHM, getJwtSecret } from "./Token.js";
 import { SessionService } from "./Session.Service.js";
+import { decoyCode, otpInResponse } from "./OtpDelivery.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -250,6 +251,7 @@ const registerSendOtp = async (phoneNumber: string) => {
       destination: normalised,
     });
 
+    if (otpInResponse()) return { ...challenge, otp: code };
     await OtpSender.sendSms(normalised, code);
     return challenge;
   } catch (error) {
@@ -349,12 +351,15 @@ const loginOtpRequest = async (phoneNumber: string) => {
     const normalised = phoneNumber.trim();
     const user = await UserQuery.findByPhoneNumber(normalised);
 
-    if (!user || !user.isActive) {
+    // With codes returned in the response, a team account must not be reachable this way:
+    // anyone who knew the phone number could sign in as that admin.
+    if (!user || !user.isActive || (otpInResponse() && user.role !== "customer")) {
       // Same response shape and timing-insensitive cost as the real path.
       return {
         verificationId: crypto.randomUUID(),
         expiresInSeconds: OtpService.OTP_TTL_SECONDS,
         resendAvailableInSeconds: OtpService.RESEND_COOLDOWN_SECONDS,
+        ...(otpInResponse() ? { otp: decoyCode() } : {}),
       };
     }
 
@@ -363,6 +368,7 @@ const loginOtpRequest = async (phoneNumber: string) => {
       destination: normalised,
       userId: user.id,
     });
+    if (otpInResponse()) return { ...challenge, otp: code };
     // Swallowed deliberately: a provider outage surfacing here would make known
     // accounts fail while unknown ones succeed — an enumeration oracle.
     await OtpSender.sendSms(normalised, code).catch((error) =>
@@ -460,11 +466,13 @@ const passwordForgot = async (email: string) => {
     const normalised = email.trim().toLowerCase();
     const user = await UserQuery.findByEmail(normalised);
 
-    if (!user || !user.isActive) {
+    // Same rule as login by OTP: with codes in the response, a reset must never open a team account.
+    if (!user || !user.isActive || (otpInResponse() && user.role !== "customer")) {
       return {
         verificationId: crypto.randomUUID(),
         expiresInSeconds: OtpService.OTP_TTL_SECONDS,
         resendAvailableInSeconds: OtpService.RESEND_COOLDOWN_SECONDS,
+        ...(otpInResponse() ? { otp: decoyCode() } : {}),
       };
     }
 
@@ -473,6 +481,7 @@ const passwordForgot = async (email: string) => {
       destination: normalised,
       userId: user.id,
     });
+    if (otpInResponse()) return { ...challenge, otp: code };
     // Swallowed for the same anti-enumeration reason as login-by-OTP above.
     await OtpSender.sendEmail(normalised, code).catch((error) =>
       console.error("[OTP] reset code delivery failed:", error?.message)

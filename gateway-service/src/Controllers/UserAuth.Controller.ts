@@ -74,7 +74,7 @@ import { created, successCode } from "../../commons/Utils/StatusCode.js";
  *               phoneNumber: { type: string, example: "+919876543210" }
  *     responses:
  *       200:
- *         description: Code dispatched.
+ *         description: Code dispatched. When the server runs with OTP_DELIVERY=response (integration only), nothing is sent and the response also carries `otp`; team accounts get a decoy code that never verifies.
  *         content:
  *           application/json:
  *             schema:
@@ -261,7 +261,7 @@ const registerComplete = async (req: Request, res: Response) => {
  *               phoneNumber: { type: string, example: "+919876543210" }
  *     responses:
  *       200:
- *         description: Challenge issued (code sent only if the account exists).
+ *         description: Challenge issued (code sent only if the account exists). When the server runs with OTP_DELIVERY=response (integration only), nothing is sent and the response also carries `otp`; team accounts get a decoy code that never verifies.
  *         content:
  *           application/json:
  *             schema:
@@ -432,7 +432,7 @@ const loginOAuth = async (req: Request, res: Response) => {
  *               email: { type: string, format: email }
  *     responses:
  *       200:
- *         description: Challenge issued (email sent only if the account exists).
+ *         description: Challenge issued (email sent only if the account exists). When the server runs with OTP_DELIVERY=response (integration only), nothing is sent and the response also carries `otp`; team accounts get a decoy code that never verifies.
  *         content:
  *           application/json:
  *             schema:

@@ -9,6 +9,7 @@ import publicRoutes from "./src/Routes/Public.Routes.js";
 import { activityLogger } from "./src/Middleware/ActivityLogger.js";
 import { apiLimiter } from "./src/Middleware/RateLimiter.js";
 import setupSwagger from "./src/Swagger/Swagger.js";
+import { assertValidOtpDelivery, otpInResponse } from "./src/Services/OtpDelivery.js";
 
 // DATABASE_URL carries host, user, password and database in one string, so
 // the discrete DB_* vars are for local docker-compose only.
@@ -33,6 +34,22 @@ const weakSecrets = ["JWT_SECRET", "INTERNAL_SERVICE_SECRET"].filter(
 if (weakSecrets.length > 0) {
   console.error(`${weakSecrets.join(", ")} must be at least ${MIN_SECRET_LENGTH} random characters.`);
   process.exit(1);
+}
+
+try {
+  assertValidOtpDelivery();
+} catch (error) {
+  console.error((error as Error).message);
+  process.exit(1);
+}
+if (otpInResponse()) {
+  // Loud on every boot: this is a development convenience, and in production it lets
+  // anyone who knows a customer's phone or email take over that customer's account.
+  console.warn(
+    "[SECURITY] OTP_DELIVERY=response: no SMS or email is sent and one-time codes are returned in API " +
+      "responses. Registration, login-by-OTP and password reset for CUSTOMER accounts are open to anyone " +
+      "who knows the phone or email. Switch to OTP_DELIVERY=send before real users sign up."
+  );
 }
 
 const app = express();
