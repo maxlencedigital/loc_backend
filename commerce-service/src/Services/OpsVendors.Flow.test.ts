@@ -115,7 +115,7 @@ describe("vendors", () => {
     expect(withDoc.documentUrl).toBe("https://files.test/msa.pdf");
     for (let i = 1; i < 10; i++) await Vendors.attachAgreementDocument(vendor.id, live.id, admin, { url: `https://files.test/${i}.pdf` });
     await refused(Vendors.attachAgreementDocument(vendor.id, live.id, admin, { url: "https://files.test/11.pdf" }), 409);
-    await refused(Vendors.attachAgreementDocument(vendor.id, past.id.replace(/^./, "0"), admin, { url: "https://files.test/x.pdf" }), 404);
+    await refused(Vendors.attachAgreementDocument(vendor.id, "00000000-0000-4000-8000-0000000000aa", admin, { url: "https://files.test/x.pdf" }), 404);
     const listed = await Vendors.listAgreements(vendor.id, { limit: "500" });
     expect(listed.limit).toBe(100);
     expect(listed.total).toBe(2);
