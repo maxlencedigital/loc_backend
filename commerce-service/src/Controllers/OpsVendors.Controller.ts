@@ -1,8 +1,16 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { CustomException } from "../../commons/Exception/CustomException.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode, unauthorized } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { OpsPurchaseOrderService } from "../Services/OpsPurchaseOrder.Service.js";
+import { OpsVendorService } from "../Services/OpsVendor.Service.js";
+
+const userOf = (req: IdentifiedRequest): RequestUser => {
+  if (!req.user) throw new CustomException("Authentication required.", unauthorized);
+  return req.user;
+};
 
 /**
  * @openapi
@@ -51,12 +59,10 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listMaterials = async (_req: Request, res: Response) => {
+const listMaterials = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.listMaterials(req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -107,15 +113,14 @@ const listMaterials = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "A material with this name already exists."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createMaterial = async (req: Request, res: Response) => {
+const createMaterial = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "unit"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsVendorService.createMaterial(req.body) }, res, "Material created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -160,12 +165,10 @@ const createMaterial = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getMaterial = async (_req: Request, res: Response) => {
+const getMaterial = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.getMaterial(req.params.id as string) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -220,16 +223,16 @@ const getMaterial = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "A material with this name already exists."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateMaterial = async (_req: Request, res: Response) => {
+const updateMaterial = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.updateMaterial(req.params.id as string, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -275,12 +278,10 @@ const updateMaterial = async (_req: Request, res: Response) => {
  *                               preferredVendorId: { type: string, format: uuid }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPurchaseRequirements = async (_req: Request, res: Response) => {
+const getPurchaseRequirements = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.requirements(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -329,12 +330,10 @@ const getPurchaseRequirements = async (_req: Request, res: Response) => {
  *                               spend: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPurchaseSpend = async (_req: Request, res: Response) => {
+const getPurchaseSpend = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.spend(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -375,15 +374,14 @@ const getPurchaseSpend = async (_req: Request, res: Response) => {
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The vendor is deactivated or the store is closed."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createPurchaseOrder = async (req: Request, res: Response) => {
+const createPurchaseOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["vendorId", "storeId", "items"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsPurchaseOrderService.create(resolveStoreScope(req), userOf(req), req.body, req.header("idempotency-key")) }, res, "Purchase order created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -446,12 +444,10 @@ const createPurchaseOrder = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listPurchaseOrders = async (_req: Request, res: Response) => {
+const listPurchaseOrders = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.list(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -478,12 +474,10 @@ const listPurchaseOrders = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getPurchaseOrder = async (_req: Request, res: Response) => {
+const getPurchaseOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.getById(req.params.id as string, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -532,12 +526,10 @@ const getPurchaseOrder = async (_req: Request, res: Response) => {
  *         description: Not found.
  *       409:
  *         description: "Only a draft can be edited."
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updatePurchaseOrder = async (_req: Request, res: Response) => {
+const updatePurchaseOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.updateDraft(req.params.id as string, resolveStoreScope(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -570,16 +562,16 @@ const updatePurchaseOrder = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "Only a draft or sent order can be cancelled."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const cancelPurchaseOrder = async (_req: Request, res: Response) => {
+const cancelPurchaseOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.cancel(req.params.id as string, resolveStoreScope(req), userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -622,17 +614,16 @@ const cancelPurchaseOrder = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The order is not sent or part-received, or more than the outstanding quantity was received."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const receivePurchaseOrder = async (req: Request, res: Response) => {
+const receivePurchaseOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["items"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.receive(req.params.id as string, resolveStoreScope(req), userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -655,16 +646,16 @@ const receivePurchaseOrder = async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: "OK."
+ *       409:
+ *         description: "Only a draft can be sent; every line needs a price; the vendor must be active."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const sendPurchaseOrder = async (_req: Request, res: Response) => {
+const sendPurchaseOrder = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPurchaseOrderService.send(req.params.id as string, resolveStoreScope(req), userOf(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -730,12 +721,10 @@ const sendPurchaseOrder = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listVendors = async (_req: Request, res: Response) => {
+const listVendors = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.listVendors(userOf(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -794,15 +783,14 @@ const listVendors = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "A vendor with this GSTIN already exists."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createVendor = async (req: Request, res: Response) => {
+const createVendor = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsVendorService.createVendor(userOf(req), req.body) }, res, "Vendor created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -851,12 +839,10 @@ const createVendor = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getVendor = async (_req: Request, res: Response) => {
+const getVendor = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.getVendor(req.params.id as string, userOf(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -919,16 +905,16 @@ const getVendor = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "A vendor with this GSTIN already exists."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateVendor = async (_req: Request, res: Response) => {
+const updateVendor = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.updateVendor(req.params.id as string, userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -965,17 +951,16 @@ const updateVendor = async (_req: Request, res: Response) => {
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The vendor is deactivated."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createVendorAgreement = async (req: Request, res: Response) => {
+const createVendorAgreement = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["title", "startDate"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsVendorService.createAgreement(req.params.id as string, userOf(req), req.body) }, res, "Agreement recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -1032,12 +1017,10 @@ const createVendorAgreement = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listVendorAgreements = async (_req: Request, res: Response) => {
+const listVendorAgreements = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.listAgreements(req.params.id as string, req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -1064,27 +1047,30 @@ const listVendorAgreements = async (_req: Request, res: Response) => {
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [file]
+ *             required: [url]
  *             properties:
- *               file: { type: string, format: binary }
+ *               url: { type: string, format: uri, description: "https link to the file, which is kept elsewhere" }
+ *               name: { type: string }
+ *               contentType: { type: string, example: application/pdf }
+ *               sizeBytes: { type: integer }
  *     responses:
  *       201:
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The agreement already holds 10 documents."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadVendorAgreementDocument = async (_req: Request, res: Response) => {
+const uploadVendorAgreementDocument = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsVendorService.attachAgreementDocument(req.params.id as string, req.params.agreementId as string, userOf(req), req.body) }, res, "Document attached.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -1117,16 +1103,16 @@ const uploadVendorAgreementDocument = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The vendor is already deactivated."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const deactivateVendor = async (_req: Request, res: Response) => {
+const deactivateVendor = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.deactivateVendor(req.params.id as string, userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -1173,12 +1159,10 @@ const deactivateVendor = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getVendorHistory = async (_req: Request, res: Response) => {
+const getVendorHistory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsVendorService.getVendorHistory(req.params.id as string, resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

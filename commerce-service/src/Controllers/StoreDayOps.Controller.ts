@@ -11,7 +11,7 @@ import { StoreDayOpsService } from "../Services/StoreDayOps.Service.js";
  *   get:
  *     operationId: getStorePerformance
  *     summary: "How this store and its team are doing"
- *     description: "**Who can call this:** admin, manager (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, manager (super_admin always allowed). Orders placed in the range (default last 30 days, at most 92). onTimePct and qualityFailPct are null with nothing to measure; qualityFailPct is the share of orders sent back a stage."
  *     tags: ["Store - Day Operations"]
  *     x-roles: [admin, manager]
  *     parameters:
@@ -187,7 +187,7 @@ const listResourceReadings = async (req: IdentifiedRequest, res: Response) => {
  *   get:
  *     operationId: listStoreStaff
  *     summary: "Staff assigned to this store and who is on shift"
- *     description: "**Who can call this:** admin, manager (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, manager (super_admin always allowed). Employees assigned to the store (HR records, at most 200); onShift means clocked in today and not out."
  *     tags: ["Store - Day Operations"]
  *     x-roles: [admin, manager]
  *     parameters:

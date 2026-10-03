@@ -1,0 +1,18 @@
+// Employee self-service (package P14). Almost everything reuses HR core and HR people tables;
+// the one table here remembers retried self-service creates (leave request, grievance, HR
+// request) so a client that retries gets the original record back instead of a second one.
+// `employeeId` is a plain uuid (no foreign key to the HR core file, which must not gain back-relations).
+
+model EssIdempotencyKey {
+  id         String   @id @default(uuid()) @db.Uuid
+  employeeId String   @db.Uuid
+  operation  String
+  key        String
+  // Null while the first request is still being processed.
+  resourceId String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([employeeId, operation, key], map: "uq_ess_idem_employee_op_key")
+  @@index([createdAt], map: "idx_ess_idem_created")
+  @@map("commerce_ess_idempotency_keys")
+}

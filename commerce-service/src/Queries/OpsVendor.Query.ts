@@ -49,6 +49,15 @@ const findById = async (id: string, db: Db = prisma): Promise<IVendor | null> =>
   }
 };
 
+// One query for a whole report's vendors, never one per row.
+const findByIds = async (ids: string[], db: Db = prisma): Promise<IVendor[]> => {
+  try {
+    return (await db.opsVendor.findMany({ where: { id: { in: ids } } })).map(toVendor);
+  } catch (error) {
+    throw error;
+  }
+};
+
 const list = async (filter: IVendorFilter, db: Db = prisma): Promise<IPage<IVendor>> => {
   try {
     const q = filter.q?.trim();
@@ -168,6 +177,7 @@ export const OpsVendorQuery = {
   inTransaction,
   create,
   findById,
+  findByIds,
   list,
   update,
   switchActive,

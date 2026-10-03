@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { ComplianceService } from "../Services/Compliance.Service.js";
 
 /**
  * @openapi
@@ -45,12 +46,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *                               daysLeft: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listExpiringCompliance = async (_req: Request, res: Response) => {
+const listExpiringCompliance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await ComplianceService.expiring(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -116,12 +117,12 @@ const listExpiringCompliance = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listComplianceItems = async (_req: Request, res: Response) => {
+const listComplianceItems = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await ComplianceService.list(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -182,13 +183,13 @@ const listComplianceItems = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createComplianceItem = async (req: Request, res: Response) => {
+const createComplianceItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["name", "type", "expiresOn"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await ComplianceService.create(scope, user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Compliance item created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -237,12 +238,12 @@ const createComplianceItem = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getComplianceItem = async (_req: Request, res: Response) => {
+const getComplianceItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await ComplianceService.getById(req.params.id, scope);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -309,12 +310,13 @@ const getComplianceItem = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateComplianceItem = async (_req: Request, res: Response) => {
+const updateComplianceItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await ComplianceService.update(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -358,12 +360,12 @@ const updateComplianceItem = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getComplianceChecklist = async (_req: Request, res: Response) => {
+const getComplianceChecklist = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await ComplianceService.getChecklist(req.params.id, scope);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -408,13 +410,13 @@ const getComplianceChecklist = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const setComplianceChecklist = async (req: Request, res: Response) => {
+const setComplianceChecklist = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["items"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await ComplianceService.setChecklist(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -425,7 +427,7 @@ const setComplianceChecklist = async (req: Request, res: Response) => {
  * /operations/compliance/items/{id}/documents:
  *   post:
  *     operationId: uploadComplianceDocument
- *     summary: "Attach a document"
+ *     summary: "Attach a document (an https link plus metadata, at most 20 per item)"
  *     description: "**Who can call this:** admin, hr (super_admin always allowed)."
  *     tags: ["Ops - Compliance"]
  *     x-roles: [admin, hr]
@@ -437,12 +439,15 @@ const setComplianceChecklist = async (req: Request, res: Response) => {
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [file]
+ *             required: [url]
  *             properties:
- *               file: { type: string, format: binary }
+ *               url: { type: string, description: "https link to the document, kept elsewhere; no file is stored here" }
+ *               name: { type: string }
+ *               contentType: { type: string }
+ *               caption: { type: string }
  *     responses:
  *       201:
  *         description: "Created."
@@ -452,12 +457,13 @@ const setComplianceChecklist = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadComplianceDocument = async (_req: Request, res: Response) => {
+const uploadComplianceDocument = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await ComplianceService.addDocument(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Document attached.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -496,13 +502,13 @@ const uploadComplianceDocument = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const renewComplianceItem = async (req: Request, res: Response) => {
+const renewComplianceItem = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["newExpiresOn"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await ComplianceService.renew(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -540,12 +546,12 @@ const renewComplianceItem = async (req: Request, res: Response) => {
  *                         expired: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getComplianceSummary = async (_req: Request, res: Response) => {
+const getComplianceSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await ComplianceService.summary(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

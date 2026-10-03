@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { AuditService } from "../Services/Audit.Service.js";
 
 /**
  * @openapi
@@ -27,6 +28,7 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *               scope: { type: string }
  *               auditor: { type: string }
  *               storeId: { type: string, format: uuid }
+ *               checklist: { type: array, items: { type: object, required: [title], properties: { title: { type: string }, result: { type: string, enum: [pass, fail, na] }, note: { type: string }, evidence: { type: array, items: { type: object, properties: { url: { type: string }, name: { type: string } } } } } } }
  *     responses:
  *       201:
  *         description: "Created."
@@ -34,13 +36,13 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createAudit = async (req: Request, res: Response) => {
+const createAudit = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["type", "title", "scheduledFor"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await AuditService.create(scope, user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Audit scheduled.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -64,7 +66,7 @@ const createAudit = async (req: Request, res: Response) => {
  *         schema: { type: integer, description: "page size, max 100" }
  *       - in: query
  *         name: status
- *         schema: { type: string, enum: [scheduled, in_progress, completed] }
+ *         schema: { type: string, enum: [scheduled, in_progress, completed, cancelled] }
  *       - in: query
  *         name: type
  *         schema: { type: string }
@@ -100,12 +102,12 @@ const createAudit = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAudits = async (_req: Request, res: Response) => {
+const listAudits = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await AuditService.list(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -162,12 +164,12 @@ const listAudits = async (_req: Request, res: Response) => {
  *                               entityId: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAuditEvidence = async (_req: Request, res: Response) => {
+const getAuditEvidence = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await AuditService.evidence(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -219,12 +221,12 @@ const getAuditEvidence = async (_req: Request, res: Response) => {
  *                               daysOverdue: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listOpenAuditFindings = async (_req: Request, res: Response) => {
+const listOpenAuditFindings = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await AuditService.listOpenFindings(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -263,12 +265,13 @@ const listOpenAuditFindings = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateAuditFinding = async (_req: Request, res: Response) => {
+const updateAuditFinding = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await AuditService.updateFinding(req.params.findingId, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -307,13 +310,13 @@ const updateAuditFinding = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const closeAuditFinding = async (req: Request, res: Response) => {
+const closeAuditFinding = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["correctiveAction"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await AuditService.closeFinding(req.params.findingId, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -340,12 +343,12 @@ const closeAuditFinding = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getAudit = async (_req: Request, res: Response) => {
+const getAudit = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await AuditService.getById(req.params.id, scope);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -376,6 +379,9 @@ const getAudit = async (_req: Request, res: Response) => {
  *               scheduledFor: { type: string, format: date }
  *               scope: { type: string }
  *               auditor: { type: string }
+ *               checklist: { type: array, items: { type: object } }
+ *               status: { type: string, enum: [cancelled], description: "Only cancelled is accepted here, with cancelReason." }
+ *               cancelReason: { type: string }
  *     responses:
  *       200:
  *         description: "OK."
@@ -385,12 +391,13 @@ const getAudit = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateAudit = async (_req: Request, res: Response) => {
+const updateAudit = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await AuditService.update(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -418,6 +425,7 @@ const updateAudit = async (_req: Request, res: Response) => {
  *             type: object
  *             properties:
  *               summary: { type: string }
+ *               waiveCriticalReason: { type: string, description: "Completes the audit although critical findings are open; stored." }
  *     responses:
  *       200:
  *         description: "OK."
@@ -427,12 +435,13 @@ const updateAudit = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const completeAudit = async (_req: Request, res: Response) => {
+const completeAudit = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await AuditService.complete(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -474,13 +483,13 @@ const completeAudit = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createAuditFinding = async (req: Request, res: Response) => {
+const createAuditFinding = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["title", "severity"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await AuditService.createFinding(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Finding recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -537,12 +546,12 @@ const createAuditFinding = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listAuditFindings = async (_req: Request, res: Response) => {
+const listAuditFindings = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await AuditService.listFindings(req.params.id, scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -569,12 +578,13 @@ const listAuditFindings = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const startAudit = async (_req: Request, res: Response) => {
+const startAudit = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await AuditService.start(req.params.id, scope, user);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

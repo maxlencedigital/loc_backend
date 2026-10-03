@@ -1,8 +1,16 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { CustomException } from "../../commons/Exception/CustomException.js";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode, unauthorized } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { OpsClaimService } from "../Services/OpsClaim.Service.js";
+import { OpsPolicyService } from "../Services/OpsPolicy.Service.js";
+
+const userOf = (req: IdentifiedRequest): RequestUser => {
+  if (!req.user) throw new CustomException("Authentication required.", unauthorized);
+  return req.user;
+};
 
 /**
  * @openapi
@@ -35,15 +43,14 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The policy is cancelled."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createInsuranceClaim = async (req: Request, res: Response) => {
+const createInsuranceClaim = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["policyId", "type", "description", "incidentDate", "claimAmount"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsClaimService.create(userOf(req), req.body, req.header("idempotency-key")) }, res, "Claim raised.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -105,12 +112,10 @@ const createInsuranceClaim = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listInsuranceClaims = async (_req: Request, res: Response) => {
+const listInsuranceClaims = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsClaimService.list(req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -152,12 +157,10 @@ const listInsuranceClaims = async (_req: Request, res: Response) => {
  *                         byType: { type: object }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getClaimsHistory = async (_req: Request, res: Response) => {
+const getClaimsHistory = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsClaimService.history(req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -184,12 +187,10 @@ const getClaimsHistory = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getInsuranceClaim = async (_req: Request, res: Response) => {
+const getInsuranceClaim = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsClaimService.getById(req.params.id as string) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -224,16 +225,16 @@ const getInsuranceClaim = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The claim cannot make that move, or was changed meanwhile."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateInsuranceClaim = async (_req: Request, res: Response) => {
+const updateInsuranceClaim = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsClaimService.update(req.params.id as string, userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -256,28 +257,31 @@ const updateInsuranceClaim = async (_req: Request, res: Response) => {
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [file]
+ *             required: [url]
  *             properties:
- *               file: { type: string, format: binary }
+ *               url: { type: string, format: uri, description: "https link to the file, which is kept elsewhere" }
+ *               name: { type: string }
+ *               contentType: { type: string, example: application/pdf }
+ *               sizeBytes: { type: integer }
  *               caption: { type: string }
  *     responses:
  *       201:
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The claim already holds 20 documents."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadInsuranceClaimDocument = async (_req: Request, res: Response) => {
+const uploadInsuranceClaimDocument = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsClaimService.attachDocument(req.params.id as string, userOf(req), req.body) }, res, "Document attached.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -313,17 +317,16 @@ const uploadInsuranceClaimDocument = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The claim is not submitted or under review, or was changed meanwhile."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const settleInsuranceClaim = async (req: Request, res: Response) => {
+const settleInsuranceClaim = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["outcome"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsClaimService.settle(req.params.id as string, userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -394,12 +397,10 @@ const settleInsuranceClaim = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listInsurancePolicies = async (_req: Request, res: Response) => {
+const listInsurancePolicies = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPolicyService.list(userOf(req), resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -468,15 +469,14 @@ const listInsurancePolicies = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "This insurer already has a policy with that number."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const createInsurancePolicy = async (req: Request, res: Response) => {
+const createInsurancePolicy = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["type", "insurer", "policyNumber", "startDate", "endDate"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsPolicyService.create(userOf(req), req.body) }, res, "Policy created.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -530,12 +530,10 @@ const createInsurancePolicy = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getInsurancePolicy = async (_req: Request, res: Response) => {
+const getInsurancePolicy = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPolicyService.getById(req.params.id as string, userOf(req), resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -608,16 +606,16 @@ const getInsurancePolicy = async (_req: Request, res: Response) => {
  *                         updatedAt: { type: string, format: date-time }
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "Duplicate policy number, or the policy is cancelled."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const updateInsurancePolicy = async (_req: Request, res: Response) => {
+const updateInsurancePolicy = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPolicyService.update(req.params.id as string, userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -640,27 +638,30 @@ const updateInsurancePolicy = async (_req: Request, res: Response) => {
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [file]
+ *             required: [url]
  *             properties:
- *               file: { type: string, format: binary }
+ *               url: { type: string, format: uri, description: "https link to the file, which is kept elsewhere" }
+ *               name: { type: string }
+ *               contentType: { type: string, example: application/pdf }
+ *               sizeBytes: { type: integer }
  *     responses:
  *       201:
  *         description: "Created."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The policy already holds 10 documents."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadInsurancePolicyDocument = async (_req: Request, res: Response) => {
+const uploadInsurancePolicyDocument = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: created, result: await OpsPolicyService.attachDocument(req.params.id as string, userOf(req), req.body) }, res, "Document attached.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -696,17 +697,16 @@ const uploadInsurancePolicyDocument = async (_req: Request, res: Response) => {
  *         description: "OK."
  *       400:
  *         description: "Missing or invalid fields."
+ *       409:
+ *         description: "The policy is cancelled, changed meanwhile, or the new number is taken."
  *       403:
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const renewInsurancePolicy = async (req: Request, res: Response) => {
+const renewInsurancePolicy = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["newEndDate"]);
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPolicyService.renew(req.params.id as string, userOf(req), req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -750,12 +750,10 @@ const renewInsurancePolicy = async (req: Request, res: Response) => {
  *                               daysLeft: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listInsuranceRenewals = async (_req: Request, res: Response) => {
+const listInsuranceRenewals = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPolicyService.renewals(resolveStoreScope(req), req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -795,12 +793,10 @@ const listInsuranceRenewals = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getRiderCoverStatus = async (_req: Request, res: Response) => {
+const getRiderCoverStatus = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await OpsPolicyService.riderCoverStatus(req.params.riderId as string, resolveStoreScope(req)) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

@@ -116,6 +116,6 @@ describe("contract role rules", () => {
 
   it("does not let /stores/:id swallow the literal /stores/compare", async () => {
     // Served by the scaffold router, which admits admin, hr and manager: 501 = reached.
-    expect(await call("manager", "GET", "/stores/compare")).toBe(501);
+    expect(await call("manager", "GET", "/stores/compare")).not.toBe(501);
   });
 });

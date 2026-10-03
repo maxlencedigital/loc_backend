@@ -1,7 +1,8 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { EssService } from "../Services/Ess.Service.js";
 
 /**
  * @openapi
@@ -48,12 +49,12 @@ import { handleErrorResponse, handleNotImplementedResponse } from "../../commons
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const listMyAppraisals = async (_req: Request, res: Response) => {
+const listMyAppraisals = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.listMyAppraisals((req.user as RequestUser).id, req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -92,12 +93,12 @@ const listMyAppraisals = async (_req: Request, res: Response) => {
  *                               status: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const getMyCareerPlan = async (_req: Request, res: Response) => {
+const getMyCareerPlan = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.getMyCareerPlan((req.user as RequestUser).id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -130,12 +131,12 @@ const getMyCareerPlan = async (_req: Request, res: Response) => {
  *                         bonusEligible: { type: boolean }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const getMyCompensation = async (_req: Request, res: Response) => {
+const getMyCompensation = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.getMyCompensation((req.user as RequestUser).id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -181,12 +182,12 @@ const getMyCompensation = async (_req: Request, res: Response) => {
  *                         due: { type: number, description: "Amount in INR" }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const getMyEarnings = async (_req: Request, res: Response) => {
+const getMyEarnings = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.getMyEarnings((req.user as RequestUser).id, req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -242,12 +243,12 @@ const getMyEarnings = async (_req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const listMyPayouts = async (_req: Request, res: Response) => {
+const listMyPayouts = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.listMyPayouts((req.user as RequestUser).id, req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -294,12 +295,12 @@ const listMyPayouts = async (_req: Request, res: Response) => {
  *                               trend: { type: string }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const getMyPerformance = async (_req: Request, res: Response) => {
+const getMyPerformance = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.getMyPerformance((req.user as RequestUser).id, req.query) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -336,12 +337,12 @@ const getMyPerformance = async (_req: Request, res: Response) => {
  *                         email: { type: string, format: email }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const getMyEmploymentProfile = async (_req: Request, res: Response) => {
+const getMyEmploymentProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.getMyEmploymentProfile((req.user as RequestUser).id) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -379,12 +380,12 @@ const getMyEmploymentProfile = async (_req: Request, res: Response) => {
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
+ *       404:
+ *         description: "No employee record is linked to your login, or the record asked for is not yours."
  */
-const updateMyEmploymentProfile = async (_req: Request, res: Response) => {
+const updateMyEmploymentProfile = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    return handleSuccessResponse({ statusCode: successCode, result: await EssService.updateMyEmploymentProfile(req.user as RequestUser, req.body) }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }

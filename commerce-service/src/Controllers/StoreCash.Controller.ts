@@ -11,7 +11,7 @@ import { StoreCashService } from "../Services/StoreCash.Service.js";
  *   post:
  *     operationId: countCash
  *     summary: "Count the day's cash"
- *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed). If the count does not match what the system expected, the difference is raised the same day."
+ *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed). If the count does not match what the system expected, the difference is raised the same day. Expected is the paid walk-in orders booked that business day (IST); card and UPI at the counter are not separated. Counts are append-only; the latest is the day's count."
  *     tags: ["Store - Cash & Banking"]
  *     x-roles: [admin, manager, staff]
  *     parameters:
@@ -138,7 +138,7 @@ const listCashCounts = async (req: IdentifiedRequest, res: Response) => {
  *   post:
  *     operationId: recordCashDeposit
  *     summary: "Mark cash as deposited at the bank"
- *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed). Needs a count for the day first; deposits for a day cannot exceed the counted cash. The business day is optional (date) and defaults to the day of depositedAt."
  *     tags: ["Store - Cash & Banking"]
  *     x-roles: [admin, manager, staff]
  *     parameters:
@@ -301,7 +301,7 @@ const listStoreCashVariances = async (req: IdentifiedRequest, res: Response) => 
  *   post:
  *     operationId: closeStoreDay
  *     summary: "Close the day at this store"
- *     description: "**Who can call this:** admin, manager (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, manager (super_admin always allowed). Repeatable: closing a closed day returns the first result. 409 when the count or the bank deposit is missing, when sales were rung up after the last count, or when the difference is above CASH_VARIANCE_TOLERANCE_RUPEES (default 100) and no notes are given."
  *     tags: ["Store - Cash & Banking"]
  *     x-roles: [admin, manager]
  *     parameters:

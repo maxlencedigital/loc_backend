@@ -15,6 +15,7 @@ import {
   IStatusEvent,
 } from "../Models/Equipment/Equipment.Interface.js";
 import { isUniqueViolation } from "../Queries/DatabaseError.js";
+import { EquipmentMachines } from "./EquipmentMachines.js";
 import { EquipmentQuery } from "../Queries/Equipment.Query.js";
 import { EquipmentMaintenanceQuery } from "../Queries/EquipmentMaintenance.Query.js";
 import { EquipmentRecordsQuery } from "../Queries/EquipmentRecords.Query.js";
@@ -166,7 +167,8 @@ const create = async (scope: StoreScope, user: RequestUser, input: unknown) => {
     for (let attempt = 0; attempt < TAG_ATTEMPTS; attempt++) {
       const assetTag = provided ?? formatTag(await EquipmentQuery.nextTagNumber());
       try {
-        return toEquipmentView(await EquipmentQuery.create({ ...data, assetTag }, event));
+        const machineId = data.machineId ?? (await EquipmentMachines.register({ ...data, assetTag }));
+        return toEquipmentView(await EquipmentQuery.create({ ...data, assetTag, machineId }, event));
       } catch (error) {
         if (!isUniqueViolation(error, "assetTag")) throw error;
         if (provided) throw new CustomException("An equipment item with this asset tag already exists.", conflict);

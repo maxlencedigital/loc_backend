@@ -1,8 +1,9 @@
-// @generated-scaffold — contract scaffold from the API catalogue; handlers answer 501 until built.
-// Once you implement a handler, delete the first line so regeneration can never overwrite your work.
-import { Request, Response } from "express";
-import { handleErrorResponse, handleNotImplementedResponse } from "../../commons/Response/Response.js";
-import { requireFields } from "../../commons/Utils/Validation.js";
+import { Response } from "express";
+import { handleErrorResponse, handleSuccessResponse } from "../../commons/Response/Response.js";
+import { created, successCode } from "../../commons/Utils/StatusCode.js";
+import { IdentifiedRequest, RequestUser } from "../Middleware/Identity.js";
+import { resolveStoreScope } from "../Middleware/StoreScope.js";
+import { IncidentService, reporterScope } from "../Services/Incident.Service.js";
 
 /**
  * @openapi
@@ -48,13 +49,12 @@ import { requireFields } from "../../commons/Utils/Validation.js";
  *         description: "Missing or invalid fields."
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const reportIncident = async (req: Request, res: Response) => {
+const reportIncident = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["type", "description", "occurredAt"]);
-    return handleNotImplementedResponse(res);
+    const user = req.user as RequestUser;
+    const result = await IncidentService.report(user, reporterScope(req), req.body, req.header("Idempotency-Key"));
+    return handleSuccessResponse({ statusCode: created, result }, res, "Incident reported.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -123,12 +123,12 @@ const reportIncident = async (req: Request, res: Response) => {
  *                         total: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listIncidents = async (_req: Request, res: Response) => {
+const listIncidents = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await IncidentService.list(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -168,12 +168,12 @@ const listIncidents = async (_req: Request, res: Response) => {
  *                               actionsTaken: { type: array, items: { type: string } }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const listEscalatedIncidents = async (_req: Request, res: Response) => {
+const listEscalatedIncidents = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await IncidentService.escalated(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -224,12 +224,12 @@ const listEscalatedIncidents = async (_req: Request, res: Response) => {
  *                               count: { type: integer }
  *       403:
  *         description: Your role is not allowed to call this.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getIncidentSummary = async (_req: Request, res: Response) => {
+const getIncidentSummary = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await IncidentService.summary(scope, req.query);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -256,12 +256,12 @@ const getIncidentSummary = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const getIncident = async (_req: Request, res: Response) => {
+const getIncident = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const result = await IncidentService.getById(req.params.id, scope);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -292,6 +292,8 @@ const getIncident = async (_req: Request, res: Response) => {
  *               action: { type: string }
  *               doneBy: { type: string, format: uuid }
  *               doneOn: { type: string, format: date }
+ *               severity: { type: string, enum: [low, medium, high, critical], description: "Raising is free; lowering needs severityReason. Both are recorded." }
+ *               severityReason: { type: string }
  *     responses:
  *       201:
  *         description: "Created."
@@ -301,13 +303,13 @@ const getIncident = async (_req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const recordIncidentAction = async (req: Request, res: Response) => {
+const recordIncidentAction = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["action"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await IncidentService.recordAction(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Action recorded.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -345,13 +347,13 @@ const recordIncidentAction = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const assignIncident = async (req: Request, res: Response) => {
+const assignIncident = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["assigneeId"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await IncidentService.assign(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -401,13 +403,13 @@ const assignIncident = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const raiseClaimFromIncident = async (req: Request, res: Response) => {
+const raiseClaimFromIncident = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["policyId", "claimAmount"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await IncidentService.raiseClaim(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -433,10 +435,11 @@ const raiseClaimFromIncident = async (req: Request, res: Response) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [outcome]
+ *             required: [outcome, preventiveMeasures]
  *             properties:
  *               outcome: { type: string }
- *               preventiveMeasures: { type: string }
+ *               preventiveMeasures: { type: string, description: "Required to close (the contract listed it as optional)." }
+ *               rootCause: { type: string }
  *     responses:
  *       200:
  *         description: "OK."
@@ -446,13 +449,13 @@ const raiseClaimFromIncident = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const closeIncident = async (req: Request, res: Response) => {
+const closeIncident = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["outcome"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await IncidentService.close(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -490,13 +493,13 @@ const closeIncident = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const escalateIncident = async (req: Request, res: Response) => {
+const escalateIncident = async (req: IdentifiedRequest, res: Response) => {
   try {
-    requireFields(req.body, ["reason"]);
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await IncidentService.escalate(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: successCode, result }, res);
   } catch (error) {
     return handleErrorResponse(error, res);
   }
@@ -517,13 +520,23 @@ const escalateIncident = async (req: Request, res: Response) => {
  *         required: true
  *         schema: { type: string }
  *     requestBody:
- *       required: false
+ *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
+ *             required: [photos]
  *             properties:
- *               photos: { type: string, format: binary }
+ *               photos:
+ *                 type: array
+ *                 description: "https links to photos kept elsewhere, 1 to 10 per call, 20 per incident"
+ *                 items:
+ *                   type: object
+ *                   required: [url]
+ *                   properties:
+ *                     url: { type: string }
+ *                     name: { type: string }
+ *                     caption: { type: string }
  *     responses:
  *       201:
  *         description: "Created."
@@ -533,12 +546,13 @@ const escalateIncident = async (req: Request, res: Response) => {
  *         description: Your role is not allowed to call this.
  *       404:
  *         description: Not found.
- *       501:
- *         description: "Scaffolded per API contract — implementation pending."
  */
-const uploadIncidentPhotos = async (_req: Request, res: Response) => {
+const uploadIncidentPhotos = async (req: IdentifiedRequest, res: Response) => {
   try {
-    return handleNotImplementedResponse(res);
+    const scope = resolveStoreScope(req);
+    const user = req.user as RequestUser;
+    const result = await IncidentService.addPhotos(req.params.id, scope, user, req.body);
+    return handleSuccessResponse({ statusCode: created, result }, res, "Photos added.");
   } catch (error) {
     return handleErrorResponse(error, res);
   }

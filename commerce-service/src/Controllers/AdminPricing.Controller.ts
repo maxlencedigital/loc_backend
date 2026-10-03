@@ -64,7 +64,7 @@ const getAreaPricing = async (req: IdentifiedRequest, res: Response) => {
  *   put:
  *     operationId: setAreaPricing
  *     summary: "Set an area's pricing overrides"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). Replaces the whole set: items left out are removed. Every change is written to the price history."
  *     tags: ["Admin - Catalog & Pricing"]
  *     x-roles: [admin]
  *     parameters:
@@ -353,7 +353,7 @@ const getGlobalPricing = async (req: IdentifiedRequest, res: Response) => {
  *   put:
  *     operationId: setGlobalPricing
  *     summary: "Replace the business-wide price list"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). Prices apply at once: an effectiveFrom later than today is refused. expressPrice is optional per item (default 145% of price)."
  *     tags: ["Admin - Catalog & Pricing"]
  *     x-roles: [admin]
  *     requestBody:
@@ -506,7 +506,7 @@ const getStorePricing = async (req: IdentifiedRequest, res: Response) => {
  *   put:
  *     operationId: setStorePricing
  *     summary: "Set a store's pricing overrides"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). Replaces the whole set: items left out are removed. Every change is written to the price history."
  *     tags: ["Admin - Catalog & Pricing"]
  *     x-roles: [admin]
  *     parameters:

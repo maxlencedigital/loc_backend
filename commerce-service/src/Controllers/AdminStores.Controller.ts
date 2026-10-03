@@ -68,7 +68,7 @@ const listAreas = async (req: IdentifiedRequest, res: Response) => {
  *   post:
  *     operationId: createArea
  *     summary: "Create an area"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). storeIds (optional) assigns stores to the area; a store belongs to at most one area."
  *     tags: ["Admin - Stores & Areas"]
  *     x-roles: [admin]
  *     requestBody:
@@ -229,7 +229,7 @@ const updateArea = async (req: IdentifiedRequest, res: Response) => {
  *   delete:
  *     operationId: deleteArea
  *     summary: "Delete an area"
- *     description: "**Who can call this:** admin (super_admin always allowed)."
+ *     description: "**Who can call this:** admin (super_admin always allowed). Refused (409) while the area still has stores."
  *     tags: ["Admin - Stores & Areas"]
  *     x-roles: [admin]
  *     parameters:

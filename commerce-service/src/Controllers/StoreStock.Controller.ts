@@ -11,7 +11,7 @@ import { StoreStockService } from "../Services/StoreStock.Service.js";
  *   get:
  *     operationId: listStoreStock
  *     summary: "Stock levels at a store"
- *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, manager, staff (super_admin always allowed). Quantities are the purchasing module's stock records: only materials the store has held are listed."
  *     tags: ["Store - Stock & Materials"]
  *     x-roles: [admin, manager, staff]
  *     parameters:
@@ -79,7 +79,7 @@ const listStoreStock = async (req: IdentifiedRequest, res: Response) => {
  *   get:
  *     operationId: listStockAlerts
  *     summary: "Open low-stock alerts"
- *     description: "**Who can call this:** admin, hr, manager, staff (super_admin always allowed)."
+ *     description: "**Who can call this:** admin, hr, manager, staff (super_admin always allowed). Paged (page, limit; the result also carries page, limit, total). Combines items at or below their reorder level with the floor's flags."
  *     tags: ["Store - Stock & Materials"]
  *     x-roles: [admin, hr, manager, staff]
  *     parameters:

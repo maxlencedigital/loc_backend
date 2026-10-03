@@ -143,6 +143,12 @@ services:
       # send (default) or response. In response mode no SMS/email is sent and the one-time code
       # is returned as `otp` in the API response, so customer accounts can be taken over by anyone
       # who knows a phone or email. Type it in the dashboard on purpose; never ship it as a default.
+      # Base64 of 32 random bytes. Encrypts 2FA secrets at rest; without it 2FA answers 503.
+      - key: TWO_FACTOR_ENCRYPTION_KEY
+        sync: false
+      # Where invite and reset links point (the dashboard's address).
+      - key: DASHBOARD_URL
+        sync: false
       - key: OTP_DELIVERY
         sync: false
       - key: TRANSMIT_SMS_API_KEY
@@ -222,6 +228,9 @@ services:
       - key: CACHE_NAMESPACE
         value: commerce
       # Other services this one calls directly (never through the gateway), with the internal secret.
+      # Base64 of 32 random bytes. Encrypts employee bank account numbers; without it storing one is refused.
+      - key: HR_DATA_KEY
+        sync: false
       - key: GATEWAY_SERVICE_URL
         value: https://loc-gateway-service.onrender.com
       - key: LOGISTICS_SERVICE_URL
@@ -244,7 +253,7 @@ services:
     region: singapore
     branch: dev
     rootDir: logistics-service
-    buildCommand: npm ci --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -254,6 +263,9 @@ services:
     envVars:
       - fromGroup: loc-shared
       - key: DATABASE_URL
+        sync: false
+      # Migrations need the DIRECT connection (session pooler, :5432), not the pooler.
+      - key: DIRECT_DATABASE_URL
         sync: false
       - key: NODE_ENV
         value: production
@@ -342,7 +354,7 @@ services:
     region: singapore
     branch: dev
     rootDir: growth-service
-    buildCommand: npm ci --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -352,6 +364,9 @@ services:
     envVars:
       - fromGroup: loc-shared
       - key: DATABASE_URL
+        sync: false
+      # Migrations need the DIRECT connection (session pooler, :5432), not the pooler.
+      - key: DIRECT_DATABASE_URL
         sync: false
       - key: NODE_ENV
         value: production
